@@ -1,7 +1,4 @@
-# ProyectoArqui2---Sesin-Vallino-y-Rodriguez-
-
-
-# 🏠 Airbnb Microservices
+# 🏠 Spotly Microservices
 
 Sistema de reservas de alojamientos con arquitectura de microservicios.  
 **Proyecto Final - Arquitectura de Software II - UCC**
@@ -25,7 +22,7 @@ Login, Registro, Búsqueda, Detalles, Reserva, Mis Reservas, Admin
 ```bash
 # Clonar repositorio
 git clone <url>
-cd airbnb-microservices
+cd spotly-microservices
 
 # Configurar variables
 cp .env.example .env
