@@ -20,7 +20,7 @@ services:
       - spotly-network
 
   users-api:
-    image: proyectoarqui2---sesin-vallino-y-rodriguez--users-api:latest
+    build: ./users-api
     container_name: spotly-users-api
     environment:
       DB_HOST: mysql
