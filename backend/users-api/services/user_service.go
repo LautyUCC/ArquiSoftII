@@ -14,9 +14,6 @@ type UserService interface {
 	CreateUser(req dto.CreateUserRequest) (*domain.User, error)
 	GetUserByID(id uint) (*domain.User, error)
 	Login(req dto.LoginRequest) (*dto.LoginResponse, error)
-	UpdateUser(id uint, req dto.UpdateUserRequest) (*domain.User, error)
-	DeleteUser(id uint) error
-	GetAllUsers() ([]domain.User, error)
 }
 
 // userService es la implementación real del servicio
@@ -115,75 +112,74 @@ func (s *userService) Login(req dto.LoginRequest) (*dto.LoginResponse, error) {
 		Token: token,
 		User:  *user,
 	}, nil
-}
 
-// UpdateUser actualiza los datos de un usuario existente
-func (s *userService) UpdateUser(id uint, req dto.UpdateUserRequest) (*domain.User, error) {
-	// 1. Verificar que el usuario existe
-	user, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, errors.New("user not found")
-	}
-
-	// 2. Si se proporciona un nuevo username, verificar que no esté en uso
-	if req.Username != "" && req.Username != user.Username {
-		existingUser, _ := s.repo.GetByUsername(req.Username)
-		if existingUser != nil {
-			return nil, errors.New("username already exists")
-		}
-		user.Username = req.Username
-	}
-
-	// 3. Si se proporciona un nuevo email, verificar que no esté en uso
-	if req.Email != "" && req.Email != user.Email {
-		existingUser, _ := s.repo.GetByEmail(req.Email)
-		if existingUser != nil {
-			return nil, errors.New("email already exists")
-		}
-		user.Email = req.Email
-	}
-
-	// 4. Actualizar otros campos si se proporcionan
-	if req.FirstName != "" {
-		user.FirstName = req.FirstName
-	}
-
-	if req.LastName != "" {
-		user.LastName = req.LastName
-	}
-
-	// 5. Si se proporciona una nueva contraseña, hashearla
-	if req.Password != "" {
-		hashedPassword, err := utils.HashPassword(req.Password)
+	// UpdateUser actualiza los datos de un usuario existente
+	func (s *userService) UpdateUser(id uint, req dto.UpdateUserRequest) (*domain.User, error) {
+		// 1. Verificar que el usuario existe
+		user, err := s.repo.GetByID(id)
 		if err != nil {
-			return nil, errors.New("error hashing password")
+			return nil, errors.New("user not found")
 		}
-		user.Password = hashedPassword
+
+		// 2. Si se proporciona un nuevo username, verificar que no esté en uso
+		if req.Username != "" && req.Username != user.Username {
+			existingUser, _ := s.repo.GetByUsername(req.Username)
+			if existingUser != nil {
+				return nil, errors.New("username already exists")
+			}
+			user.Username = req.Username
+		}
+
+		// 3. Si se proporciona un nuevo email, verificar que no esté en uso
+		if req.Email != "" && req.Email != user.Email {
+			existingUser, _ := s.repo.GetByEmail(req.Email)
+			if existingUser != nil {
+				return nil, errors.New("email already exists")
+			}
+			user.Email = req.Email
+		}
+
+		// 4. Actualizar otros campos si se proporcionan
+		if req.FirstName != "" {
+			user.FirstName = req.FirstName
+		}
+
+		if req.LastName != "" {
+			user.LastName = req.LastName
+		}
+
+		// 5. Si se proporciona una nueva contraseña, hashearla
+		if req.Password != "" {
+			hashedPassword, err := utils.HashPassword(req.Password)
+			if err != nil {
+				return nil, errors.New("error hashing password")
+			}
+			user.Password = hashedPassword
+		}
+
+		// 6. Guardar los cambios en la base de datos
+		err = s.repo.Update(user)
+		if err != nil {
+			return nil, err
+		}
+
+		return user, nil
 	}
 
-	// 6. Guardar los cambios en la base de datos
-	err = s.repo.Update(user)
-	if err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-// DeleteUser elimina un usuario por su ID
-func (s *userService) DeleteUser(id uint) error {
-	// 1. Verificar que el usuario existe
-	_, err := s.repo.GetByID(id)
-	if err != nil {
+	// DeleteUser elimina un usuario por su ID
+	func (s *userService) DeleteUser(id uint) error {
+		// 1. Verificar que el usuario existe
+		_, err := s.repo.GetByID(id)
+		if err != nil {
 		return errors.New("user not found")
 	}
 
-	// 2. Eliminar el usuario
-	return s.repo.Delete(id)
-}
+		// 2. Eliminar el usuario
+		return s.repo.Delete(id)
+	}
 
-// GetAllUsers obtiene todos los usuarios del sistema
-// Solo accesible por administradores
-func (s *userService) GetAllUsers() ([]domain.User, error) {
-	return s.repo.GetAll()
-}
+	// GetAllUsers obtiene todos los usuarios del sistema
+	// Solo accesible por administradores
+	func (s *userService) GetAllUsers() ([]domain.User, error) {
+		return s.repo.GetAll()
+	}

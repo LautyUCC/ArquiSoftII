@@ -1,23 +1,22 @@
-# Use golang:1.21-alpine as base image
-FROM golang:1.21-alpine
+# Build stage
+FROM golang:1.22-alpine AS build
 
-# Set working directory
+RUN apk add --no-cache git
+
 WORKDIR /app
 
-# Copy go.mod and go.sum
-COPY go.mod go.sum ./
-
-# Download dependencies
+COPY go.mod ./
 RUN go mod download
 
-# Copy all source code
 COPY . .
 
-# Build the binary
-RUN go build -o search-api .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /api .
 
-# Expose port 8082
+# Runtime stage
+FROM alpine:3.20
+
+COPY --from=build /api /bin/api
+
 EXPOSE 8082
 
-# Run the binary
-CMD ["./search-api"]
+ENTRYPOINT ["/bin/api"]

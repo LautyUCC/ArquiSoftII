@@ -69,14 +69,6 @@ func (m *mockUserRepository) Delete(id uint) error {
 	return nil
 }
 
-func (m *mockUserRepository) GetAll() ([]domain.User, error) {
-	users := make([]domain.User, 0, len(m.users))
-	for _, user := range m.users {
-		users = append(users, *user)
-	}
-	return users, nil
-}
-
 // ============================================
 // TESTS
 // ============================================
