@@ -109,8 +109,8 @@ func main() {
             c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
     
             if c.Request.Method == "OPTIONS" {
-                c.AbortWithStatus(204)
-                return
+            c.AbortWithStatus(204)
+            return
             }
     
             c.Next()
