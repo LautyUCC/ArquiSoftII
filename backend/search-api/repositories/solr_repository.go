@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -63,7 +64,7 @@ type SolrProperty struct {
 	Description   string    `json:"description"`
 	City          string    `json:"city"`
 	Country       string    `json:"country"`
-	PricePerNight float64   `json:"price_per_night"`
+	PricePerNight float64   `json:"price"`
 	Bedrooms      int       `json:"bedrooms"`
 	Bathrooms     int       `json:"bathrooms"`
 	MaxGuests     int       `json:"max_guests"`
@@ -114,7 +115,7 @@ func (r *solrRepository) Search(ctx context.Context, request dto.SearchRequest) 
 		if maxPrice == 0 {
 			maxPrice = 999999 // Valor alto si no se especifica máximo
 		}
-		filters = append(filters, fmt.Sprintf("price_per_night:[%f TO %f]", minPrice, maxPrice))
+		filters = append(filters, fmt.Sprintf("price:[%f TO %f]", minPrice, maxPrice))
 	}
 
 	// Filtro por número de habitaciones
@@ -150,19 +151,18 @@ func (r *solrRepository) Search(ctx context.Context, request dto.SearchRequest) 
 	params.Set("start", strconv.Itoa(start))
 	params.Set("rows", strconv.Itoa(pageSize))
 
-	// Ordenamiento
+	// Ordenamiento (opcional - solo si el usuario lo especifica)
 	sortBy := request.SortBy
-	if sortBy == "" {
-		sortBy = "price_per_night"
+	if sortBy != "" {
+		sortOrder := request.SortOrder
+		if sortOrder == "" {
+			sortOrder = "asc"
+		}
+		if sortOrder != "asc" && sortOrder != "desc" {
+			sortOrder = "asc"
+		}
+		params.Set("sort", fmt.Sprintf("%s %s", sortBy, sortOrder))
 	}
-	sortOrder := request.SortOrder
-	if sortOrder == "" {
-		sortOrder = "asc"
-	}
-	if sortOrder != "asc" && sortOrder != "desc" {
-		sortOrder = "asc"
-	}
-	params.Set("sort", fmt.Sprintf("%s %s", sortBy, sortOrder))
 
 	// Construir URL completa
 	fullURL := baseURL + "?" + params.Encode()
@@ -214,14 +214,22 @@ func (r *solrRepository) Search(ctx context.Context, request dto.SearchRequest) 
 
 // IndexProperty indexa una nueva propiedad en Solr
 func (r *solrRepository) IndexProperty(ctx context.Context, property domain.Property) error {
+	log.Printf("📝 Indexando propiedad en Solr - ID: %s, Title: %s", property.ID, property.Title)
+
 	// Convertir domain.Property a SolrProperty
 	solrProp := r.propertyToSolr(property)
+
+	// Log para debug - verificar que todos los campos se mapearon
+	log.Printf("🔍 SolrProperty mapeado - ID: %s, Title: %s, Price: %f, City: %s, Country: %s", 
+		solrProp.ID, solrProp.Title, solrProp.PricePerNight, solrProp.City, solrProp.Country)
 
 	// Serializar a JSON
 	jsonData, err := json.Marshal(solrProp)
 	if err != nil {
 		return fmt.Errorf("error serializando propiedad a JSON: %w", err)
 	}
+
+	log.Printf("📦 JSON a enviar a Solr: %s", string(jsonData))
 
 	// Construir URL de actualización
 	updateURL := strings.TrimSuffix(r.solrURL, "/") + "/update/json/docs"
@@ -240,11 +248,15 @@ func (r *solrRepository) IndexProperty(ctx context.Context, property domain.Prop
 	}
 	defer resp.Body.Close()
 
+	// Leer respuesta para debug
+	body, _ := io.ReadAll(resp.Body)
+
 	// Verificar código de estado
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("error indexando propiedad en Solr (status %d): %s", resp.StatusCode, string(body))
 	}
+
+	log.Printf("✅ Propiedad indexada exitosamente en Solr - ID: %s", property.ID)
 
 	// Hacer commit
 	return r.commit(ctx)
@@ -332,7 +344,13 @@ func (r *solrRepository) commit(ctx context.Context) error {
 
 // propertyToSolr convierte una domain.Property a SolrProperty
 func (r *solrRepository) propertyToSolr(property domain.Property) SolrProperty {
-	return SolrProperty{
+	// Asegurar que CreatedAt tenga un valor válido
+	createdAt := property.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+	}
+
+	solrProp := SolrProperty{
 		ID:            property.ID,
 		Title:         property.Title,
 		Description:   property.Description,
@@ -345,73 +363,148 @@ func (r *solrRepository) propertyToSolr(property domain.Property) SolrProperty {
 		Images:        property.Images,
 		OwnerID:       property.OwnerID,
 		Available:     property.Available,
-		CreatedAt:     property.CreatedAt,
+		CreatedAt:     createdAt,
 	}
+
+	// Log para verificar que todos los campos tienen valores
+	if solrProp.ID == "" {
+		log.Printf("⚠️ ADVERTENCIA: ID está vacío")
+	}
+	if solrProp.Title == "" {
+		log.Printf("⚠️ ADVERTENCIA: Title está vacío")
+	}
+	if solrProp.PricePerNight == 0 {
+		log.Printf("⚠️ ADVERTENCIA: PricePerNight es 0")
+	}
+	if solrProp.City == "" && solrProp.Country == "" {
+		log.Printf("⚠️ ADVERTENCIA: City y Country están vacíos")
+	}
+
+	return solrProp
 }
 
 // solrDocToProperty convierte un documento de Solr a domain.Property
+// Solr puede devolver campos como arrays o valores simples, necesitamos manejar ambos casos
 func (r *solrRepository) solrDocToProperty(doc map[string]interface{}) (domain.Property, error) {
 	property := domain.Property{}
 
+	// Helper para extraer el primer valor de un array o el valor directo
+	getStringValue := func(key string) string {
+		val, exists := doc[key]
+		if !exists {
+			return ""
+		}
+		// Si es un array, tomar el primer elemento
+		if arr, ok := val.([]interface{}); ok && len(arr) > 0 {
+			if str, ok := arr[0].(string); ok {
+				return str
+			}
+		}
+		// Si es string directo
+		if str, ok := val.(string); ok {
+			return str
+		}
+		return ""
+	}
+
+	// Helper para extraer float64 (puede venir como array o valor directo)
+	getFloatValue := func(key string) float64 {
+		val, exists := doc[key]
+		if !exists {
+			return 0
+		}
+		// Si es un array, tomar el primer elemento
+		if arr, ok := val.([]interface{}); ok && len(arr) > 0 {
+			if f, ok := arr[0].(float64); ok {
+				return f
+			}
+			// Intentar convertir desde int
+			if i, ok := arr[0].(int); ok {
+				return float64(i)
+			}
+		}
+		// Si es float64 directo
+		if f, ok := val.(float64); ok {
+			return f
+		}
+		// Intentar convertir desde int
+		if i, ok := val.(int); ok {
+			return float64(i)
+		}
+		return 0
+	}
+
+	// Helper para extraer bool
+	getBoolValue := func(key string) bool {
+		val, exists := doc[key]
+		if !exists {
+			return false
+		}
+		// Si es un array, tomar el primer elemento
+		if arr, ok := val.([]interface{}); ok && len(arr) > 0 {
+			if b, ok := arr[0].(bool); ok {
+				return b
+			}
+		}
+		// Si es bool directo
+		if b, ok := val.(bool); ok {
+			return b
+		}
+		return false
+	}
+
+	// LOG para debug - ver qué devuelve Solr
+	log.Printf("📥 Documento de Solr: %+v", doc)
+	log.Printf("📋 Title leído: '%v' (tipo: %T)", doc["title"], doc["title"])
+	log.Printf("💰 Price leído: '%v' (tipo: %T)", doc["price"], doc["price"])
+
 	// Extraer y convertir campos
-	if id, ok := doc["id"].(string); ok {
-		property.ID = id
-	}
+	property.ID = getStringValue("id")
+	property.Title = getStringValue("title")
+	property.Description = getStringValue("description")
+	property.City = getStringValue("city")
+	property.Country = getStringValue("country")
+	property.PricePerNight = getFloatValue("price")
+	property.Bedrooms = int(getFloatValue("bedrooms"))
+	property.Bathrooms = int(getFloatValue("bathrooms"))
+	property.MaxGuests = int(getFloatValue("max_guests"))
+	property.Available = getBoolValue("available")
+	property.OwnerID = uint(getFloatValue("owner_id"))
 
-	if title, ok := doc["title"].(string); ok {
-		property.Title = title
-	}
-
-	if description, ok := doc["description"].(string); ok {
-		property.Description = description
-	}
-
-	if city, ok := doc["city"].(string); ok {
-		property.City = city
-	}
-
-	if country, ok := doc["country"].(string); ok {
-		property.Country = country
-	}
-
-	if price, ok := doc["price_per_night"].(float64); ok {
-		property.PricePerNight = price
-	}
-
-	if bedrooms, ok := doc["bedrooms"].(float64); ok {
-		property.Bedrooms = int(bedrooms)
-	}
-
-	if bathrooms, ok := doc["bathrooms"].(float64); ok {
-		property.Bathrooms = int(bathrooms)
-	}
-
-	if maxGuests, ok := doc["max_guests"].(float64); ok {
-		property.MaxGuests = int(maxGuests)
-	}
-
-	if images, ok := doc["images"].([]interface{}); ok {
-		property.Images = make([]string, 0, len(images))
-		for _, img := range images {
-			if imgStr, ok := img.(string); ok {
-				property.Images = append(property.Images, imgStr)
+	// Manejar images (array de strings)
+	if imagesVal, exists := doc["images"]; exists {
+		if arr, ok := imagesVal.([]interface{}); ok {
+			property.Images = make([]string, 0, len(arr))
+			for _, img := range arr {
+				if imgStr, ok := img.(string); ok {
+					property.Images = append(property.Images, imgStr)
+				}
 			}
 		}
 	}
 
-	if ownerID, ok := doc["owner_id"].(float64); ok {
-		property.OwnerID = uint(ownerID)
-	}
-
-	if available, ok := doc["available"].(bool); ok {
-		property.Available = available
-	}
-
-	if createdAt, ok := doc["created_at"].(string); ok {
-		if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
-			property.CreatedAt = t
+	// Manejar created_at (puede venir como array o string)
+	if createdAtVal, exists := doc["created_at"]; exists {
+		var createdAtStr string
+		if arr, ok := createdAtVal.([]interface{}); ok && len(arr) > 0 {
+			if str, ok := arr[0].(string); ok {
+				createdAtStr = str
+			}
+		} else if str, ok := createdAtVal.(string); ok {
+			createdAtStr = str
+		}
+		if createdAtStr != "" {
+			if t, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+				property.CreatedAt = t
+			} else if t, err := time.Parse("2006-01-02T15:04:05Z", createdAtStr); err == nil {
+				property.CreatedAt = t
+			}
 		}
 	}
+
+	// LOG para verificar valores mapeados
+	log.Printf("✅ Property mapeado - ID: '%s', Title: '%s', PricePerNight: %f", 
+		property.ID, property.Title, property.PricePerNight)
 
 	return property, nil
 }

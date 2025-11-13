@@ -1,81 +1,151 @@
+version: '3.8'
+
 services:
   mysql:
     image: mysql:8.0
     container_name: spotly-mysql
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: users_db
-      MYSQL_USER: spotly_user
-      MYSQL_PASSWORD: spotly_password
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpassword"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    volumes:
-      - mysql_data:/var/lib/mysql
+      MYSQL_DATABASE: spotly_users
+      MYSQL_USER: spotly
+      MYSQL_PASSWORD: spotlypass
     ports:
       - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
     networks:
       - spotly-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  solr:
+    image: solr:9
+    container_name: solr
+    ports:
+      - "8983:8983"
+    volumes:
+      - solr_data:/var/solr
+    command:
+      - solr-precreate
+      - properties
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  memcached:
+    image: memcached:alpine
+    container_name: memcached
+    ports:
+      - "11211:11211"
+    networks:
+      - spotly-network
+    restart: unless-stopped
 
   users-api:
-    build: ./users-api
-    container_name: spotly-users-api
+    build: ./backend/users-api
+    container_name: users-api
+    ports:
+      - "8081:8081"
     environment:
-      DB_HOST: mysql
+      SERVER_PORT: "8081"
+      DB_HOST: "spotly-mysql"
       DB_PORT: "3306"
-      DB_USER: spotly_user
-      DB_PASSWORD: spotly_password
-      DB_NAME: users_db
-      SERVER_PORT: "8080"
+      DB_USER: "spotly"
+      DB_PASSWORD: "spotlypass"
+      DB_NAME: "spotly_users"
+      JWT_SECRET: "your-super-secret-jwt-key-change-this-in-production"
     depends_on:
       mysql:
         condition: service_healthy
-    ports:
-      - "8080:8080"
     networks:
       - spotly-network
     restart: unless-stopped
 
   properties-api:
-    build: ./properties-api
+    build: ./backend/properties-api
     container_name: spotly-properties-api
+    ports:
+      - "8082:8082"
     environment:
-      DB_DSN: "root:root@tcp(mysql:3306)/spotly?parseTime=true&loc=Local"
+      SERVER_PORT: "8082"
+      MONGO_URI: "mongodb://mongodb:27017/spotly_properties"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      USERS_API_URL: "http://users-api:8081"
     depends_on:
-      mysql:
-        condition: service_healthy
+      - mongodb
+      - rabbitmq
+      - users-api
     networks:
       - spotly-network
     restart: unless-stopped
 
   search-api:
-    build: ./search-api
+    build: ./backend/search-api
     container_name: spotly-search-api
+    ports:
+      - "8083:8083"
     environment:
-      DB_DSN: "root:root@tcp(mysql:3306)/spotly?parseTime=true&loc=Local"
+      SERVER_PORT: "8083"
       SOLR_URL: "http://solr:8983/solr/properties"
-      RABBITMQ_URL: "amqp://spotly:spotly@rabbitmq:5672/"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
       MEMCACHED_ADDR: "memcached:11211"
+      PROPERTIES_API_URL: "http://spotly-properties-api:8082"
     depends_on:
-      mysql:
-        condition: service_healthy
+      - solr
+      - rabbitmq
+      - memcached
+      - properties-api
     networks:
       - spotly-network
     restart: unless-stopped
 
-  frontend:
-    build: ./frontend
-    container_name: spotly-frontend
+  nginx:
+    image: nginx:alpine
+    container_name: spotly-nginx
     ports:
-      - "3000:3000"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - users-api
+      - properties-api
+      - search-api
     networks:
       - spotly-network
     restart: unless-stopped
 
 volumes:
   mysql_data:
+  mongo_data:
+  rabbitmq_data:
+  solr_data:
 
 networks:
   spotly-network:

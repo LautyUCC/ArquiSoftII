@@ -28,7 +28,7 @@ func LoadConfig() *Config {
 		MemcachedHost:   getEnv("MEMCACHED_HOST", "localhost:11211"),
 		RabbitMQURL:     getEnv("RABBITMQ_URL", "amqp://admin:admin@localhost:5672/"),
 		PropertiesAPIURL: getEnv("PROPERTIES_API_URL", "http://localhost:8081"),
-		Port:             getEnv("PORT", "8082"),
+		Port:             getEnv("SERVER_PORT", "8083"),
 	}
 }
 

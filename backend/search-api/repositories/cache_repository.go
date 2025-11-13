@@ -2,13 +2,13 @@ package repositories
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"time"
 
+	"search-api/domain"
+
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/karlseguin/ccache/v3"
-	"search-api/domain"
 )
 
 // CacheRepository define la interfaz para las operaciones de caché
@@ -27,7 +27,7 @@ type CacheRepository interface {
 // cacheRepository es la implementación concreta de CacheRepository
 // Implementa un sistema de caché de dos niveles: local (ccache) y distribuido (Memcached)
 type cacheRepository struct {
-	localCache     *ccache.Cache[string, *cacheData]
+	localCache      *ccache.Cache[*cacheData]
 	memcachedClient *memcache.Client
 }
 
@@ -41,9 +41,9 @@ type cacheData struct {
 // Inicializa ccache local y conecta con Memcached
 func NewCacheRepository(memcachedHost string) CacheRepository {
 	// Inicializar caché local con ccache
-	localCache := ccache.New(ccache.Configure[string, *cacheData]().
+	localCache := ccache.New(ccache.Configure[*cacheData]().
 		MaxSize(1000).
-		ItemsToPrune(100))
+		PercentToPrune(10))
 
 	// Inicializar cliente de Memcached
 	memcachedClient := memcache.New(memcachedHost)
@@ -65,8 +65,10 @@ func (r *cacheRepository) Get(key string) ([]domain.Property, int, bool) {
 	item := r.localCache.Get(key)
 	if item != nil && !item.Expired() {
 		data := item.Value()
-		log.Printf("✅ Cache hit (local) para key: %s", key)
-		return data.Properties, data.Total, true
+		if data != nil {
+			log.Printf("✅ Cache hit (local) para key: %s", key)
+			return data.Properties, data.Total, true
+		}
 	}
 
 	// Nivel 2: Buscar en Memcached
@@ -153,4 +155,3 @@ func (r *cacheRepository) Delete(key string) {
 
 	log.Printf("✅ Datos eliminados de Memcached para key: %s", key)
 }
-

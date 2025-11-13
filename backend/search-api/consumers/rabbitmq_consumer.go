@@ -14,8 +14,8 @@ import (
 
 // PropertyMessage representa un mensaje sobre una propiedad
 type PropertyMessage struct {
-	// Action indica la acción a realizar: "create", "update", "delete"
-	Action string `json:"action"`
+	// Operation indica la operación a realizar: "create", "update", "delete"
+	Operation string `json:"operation"`
 
 	// PropertyID es el identificador único de la propiedad
 	PropertyID string `json:"propertyId"`
@@ -30,7 +30,7 @@ type RabbitMQConsumer struct {
 }
 
 // NewRabbitMQConsumer crea una nueva instancia del consumidor de RabbitMQ
-// Conecta con RabbitMQ, crea un channel y declara la queue "properties_queue"
+// Conecta con RabbitMQ, crea un channel y declara la queue "property_events"
 func NewRabbitMQConsumer(rabbitURL, queueName string, service services.SearchService) (*RabbitMQConsumer, error) {
 	log.Printf("🔌 Conectando a RabbitMQ en: %s", rabbitURL)
 
@@ -51,7 +51,7 @@ func NewRabbitMQConsumer(rabbitURL, queueName string, service services.SearchSer
 
 	log.Println("✅ Channel de RabbitMQ creado exitosamente")
 
-	// Declarar la queue "properties_queue"
+	// Declarar la queue "property_events"
 	// durable=true significa que la queue sobrevive a reinicios del servidor RabbitMQ
 	_, err = channel.QueueDeclare(
 		queueName, // nombre de la queue
@@ -78,7 +78,7 @@ func NewRabbitMQConsumer(rabbitURL, queueName string, service services.SearchSer
 }
 
 // Start inicia el consumo de mensajes de la queue
-// Procesa cada mensaje según su Action y hace ACK
+// Procesa cada mensaje según su Operation y hace ACK
 func (c *RabbitMQConsumer) Start() error {
 	log.Printf("🚀 Iniciando consumo de mensajes de la queue: %s", c.queueName)
 
@@ -132,9 +132,9 @@ func (c *RabbitMQConsumer) processMessage(msg amqp.Delivery) {
 		return
 	}
 
-	// Validar que el mensaje tenga Action y PropertyID
-	if propertyMsg.Action == "" {
-		log.Printf("❌ Mensaje inválido: Action está vacío. Body: %s", string(msg.Body))
+	// Validar que el mensaje tenga Operation y PropertyID
+	if propertyMsg.Operation == "" {
+		log.Printf("❌ Mensaje inválido: Operation está vacío. Body: %s", string(msg.Body))
 		msg.Nack(false, false)
 		return
 	}
@@ -144,15 +144,15 @@ func (c *RabbitMQConsumer) processMessage(msg amqp.Delivery) {
 		return
 	}
 
-	log.Printf("🔄 Procesando mensaje - Action: %s, PropertyID: %s", propertyMsg.Action, propertyMsg.PropertyID)
+	log.Printf("🔄 Procesando mensaje - Operation: %s, PropertyID: %s", propertyMsg.Operation, propertyMsg.PropertyID)
 
 	// Crear contexto con timeout para las operaciones
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Procesar según el Action
+	// Procesar según el Operation
 	var err error
-	switch propertyMsg.Action {
+	switch propertyMsg.Operation {
 	case "create":
 		err = c.handleCreate(ctx, propertyMsg.PropertyID)
 	case "update":
@@ -160,7 +160,7 @@ func (c *RabbitMQConsumer) processMessage(msg amqp.Delivery) {
 	case "delete":
 		err = c.handleDelete(ctx, propertyMsg.PropertyID)
 	default:
-		log.Printf("⚠️ Action desconocido: %s. Ignorando mensaje.", propertyMsg.Action)
+		log.Printf("⚠️ Operation desconocido: %s. Ignorando mensaje.", propertyMsg.Operation)
 		// ACK el mensaje aunque no sepamos qué hacer con él
 		msg.Ack(false)
 		return
@@ -169,7 +169,7 @@ func (c *RabbitMQConsumer) processMessage(msg amqp.Delivery) {
 	// Si hay error, loguearlo pero hacer ACK del mensaje para no reintentarlo infinitamente
 	// En producción, podrías querer implementar un sistema de reintentos o dead letter queue
 	if err != nil {
-		log.Printf("❌ Error procesando mensaje (Action: %s, PropertyID: %s): %v", propertyMsg.Action, propertyMsg.PropertyID, err)
+		log.Printf("❌ Error procesando mensaje (Operation: %s, PropertyID: %s): %v", propertyMsg.Operation, propertyMsg.PropertyID, err)
 		// Hacer ACK para no reintentar (o implementar lógica de reintentos)
 		msg.Ack(false)
 		return
@@ -177,7 +177,7 @@ func (c *RabbitMQConsumer) processMessage(msg amqp.Delivery) {
 
 	// Hacer ACK del mensaje si todo salió bien
 	msg.Ack(false)
-	log.Printf("✅ Mensaje procesado exitosamente - Action: %s, PropertyID: %s", propertyMsg.Action, propertyMsg.PropertyID)
+	log.Printf("✅ Mensaje procesado exitosamente - Operation: %s, PropertyID: %s", propertyMsg.Operation, propertyMsg.PropertyID)
 }
 
 // handleCreate maneja la acción "create"
@@ -265,4 +265,3 @@ func (c *RabbitMQConsumer) Close() error {
 	log.Println("✅ Todas las conexiones de RabbitMQ cerradas exitosamente")
 	return nil
 }
-

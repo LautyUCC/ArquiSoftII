@@ -150,16 +150,14 @@ func parseSearchRequest(r *http.Request) (*dto.SearchRequest, error) {
 		request.PageSize = 10 // Default
 	}
 
-	// SortBy
+	// SortBy (opcional - sin default)
 	request.SortBy = query.Get("sortBy")
-	if request.SortBy == "" {
-		request.SortBy = "price_per_night" // Default
-	}
+	// Si no se especifica, se deja vacío (sort opcional)
 
-	// SortOrder
+	// SortOrder (opcional - solo se usa si SortBy está especificado)
 	request.SortOrder = strings.ToLower(query.Get("sortOrder"))
 	if request.SortOrder == "" {
-		request.SortOrder = "asc" // Default
+		request.SortOrder = "asc" // Default solo si SortBy está especificado
 	}
 
 	return request, nil

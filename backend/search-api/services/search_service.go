@@ -199,30 +199,111 @@ func (s *searchService) FetchPropertyFromAPI(propertyID string) (*domain.Propert
 		return nil, fmt.Errorf("error leyendo respuesta de properties-api: %w", err)
 	}
 
-	// La API puede devolver la propiedad envuelta en un objeto de respuesta
-	// Intentar parsear diferentes formatos de respuesta
+	log.Printf("📦 Respuesta raw de Properties API: %s", string(body))
+
+	// Estructura para parsear la respuesta de Properties API
 	var apiResponse struct {
-		Success bool            `json:"success"`
-		Data    domain.Property `json:"data"`
-		Message string          `json:"message"`
+		Data struct {
+			ID          string   `json:"id"`
+			Title       string   `json:"title"`
+			Description string   `json:"description"`
+			Price       float64  `json:"price"`
+			Location    string   `json:"location"`
+			OwnerID     string   `json:"ownerId"`
+			Amenities   []string `json:"amenities"`
+			Capacity    int      `json:"capacity"`
+			Available   bool     `json:"available"`
+		} `json:"data"`
 	}
 
 	if err := json.Unmarshal(body, &apiResponse); err != nil {
-		// Si falla, intentar parsear directamente como Property
-		var property domain.Property
-		if err2 := json.Unmarshal(body, &property); err2 != nil {
-			return nil, fmt.Errorf("error parseando respuesta JSON: %w (también intentó parseo directo: %v)", err, err2)
-		}
-		log.Printf("✅ Propiedad obtenida desde API (formato directo): %s", propertyID)
-		return &property, nil
+		log.Printf("❌ Error parseando JSON: %v", err)
+		log.Printf("📄 Body completo: %s", string(body))
+		return nil, fmt.Errorf("error parseando respuesta: %v", err)
 	}
 
-	if !apiResponse.Success {
-		return nil, fmt.Errorf("la API reportó error: %s", apiResponse.Message)
+	// LOG para debug - verificar que el ID se leyó correctamente
+	log.Printf("🔍 ID parseado desde JSON: '%s'", apiResponse.Data.ID)
+	log.Printf("🔍 Title parseado: '%s'", apiResponse.Data.Title)
+
+	// Validar que el ID no esté vacío
+	if apiResponse.Data.ID == "" {
+		log.Printf("❌ ERROR: ID está vacío después del parseo")
+		log.Printf("📄 Body completo: %s", string(body))
+		return nil, fmt.Errorf("la API devolvió una propiedad sin ID")
+	}
+
+	// Parsear CreatedAt de string a time.Time
+	var createdAt time.Time
+	// Properties API puede no incluir CreatedAt, usar tiempo actual si no está
+	createdAt = time.Now()
+
+	// Convertir OwnerID de string a uint
+	var ownerID uint
+	if apiResponse.Data.OwnerID != "" {
+		// Generar un hash simple del string para convertirlo a uint
+		hash := md5.Sum([]byte(apiResponse.Data.OwnerID))
+		// Usar los primeros 4 bytes del hash como uint
+		ownerID = uint(hash[0]) | uint(hash[1])<<8 | uint(hash[2])<<16 | uint(hash[3])<<24
+	}
+
+	// Extraer city y country de location (formato: "Ciudad, País")
+	city := ""
+	country := ""
+	if apiResponse.Data.Location != "" {
+		parts := strings.Split(apiResponse.Data.Location, ",")
+		if len(parts) >= 1 {
+			city = strings.TrimSpace(parts[0])
+		}
+		if len(parts) >= 2 {
+			country = strings.TrimSpace(parts[1])
+		}
+	}
+
+	// LOG para debug - verificar valores antes del mapeo
+	log.Printf("🔍 Valores desde Properties API:")
+	log.Printf("   - ID: '%s'", apiResponse.Data.ID)
+	log.Printf("   - Title: '%s'", apiResponse.Data.Title)
+	log.Printf("   - Description: '%s'", apiResponse.Data.Description)
+	log.Printf("   - Price: %f", apiResponse.Data.Price)
+	log.Printf("   - Location: '%s'", apiResponse.Data.Location)
+	log.Printf("   - Capacity: %d", apiResponse.Data.Capacity)
+	log.Printf("   - Available: %v", apiResponse.Data.Available)
+	log.Printf("   - City extraída: '%s'", city)
+	log.Printf("   - Country extraída: '%s'", country)
+
+	// Mapear EXPLÍCITAMENTE cada campo
+	property := &domain.Property{
+		ID:            apiResponse.Data.ID,          // ← CRÍTICO
+		Title:         apiResponse.Data.Title,
+		Description:   apiResponse.Data.Description,
+		City:          city,
+		Country:       country,
+		PricePerNight: apiResponse.Data.Price,
+		Bedrooms:      0,
+		Bathrooms:     0,
+		MaxGuests:     apiResponse.Data.Capacity,
+		Images:        []string{},
+		OwnerID:       ownerID,
+		Available:     apiResponse.Data.Available,
+		CreatedAt:     createdAt,
+	}
+
+	// LOG para debug - verificar valores después del mapeo
+	log.Printf("🆔 ID mapeado: '%s'", property.ID)
+	log.Printf("📝 Title mapeado: '%s'", property.Title)
+	log.Printf("💰 PricePerNight mapeado: %f", property.PricePerNight)
+	log.Printf("🏙️ City mapeado: '%s'", property.City)
+	log.Printf("🌍 Country mapeado: '%s'", property.Country)
+	log.Printf("👥 MaxGuests mapeado: %d", property.MaxGuests)
+
+	if property.ID == "" {
+		log.Printf("❌ ERROR CRÍTICO: property.ID está vacío después del mapeo")
+		return nil, fmt.Errorf("ID de propiedad está vacío después del mapeo")
 	}
 
 	log.Printf("✅ Propiedad obtenida desde API: %s", propertyID)
-	return &apiResponse.Data, nil
+	return property, nil
 }
 
 // validateSearchRequest valida los parámetros de búsqueda
@@ -283,9 +364,7 @@ func (s *searchService) generateCacheKey(request dto.SearchRequest) string {
 		pageSize = 10
 	}
 	sortBy := request.SortBy
-	if sortBy == "" {
-		sortBy = "price_per_night"
-	}
+	// sortBy puede estar vacío (sort opcional)
 	sortOrder := request.SortOrder
 	if sortOrder == "" {
 		sortOrder = "asc"

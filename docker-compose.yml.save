@@ -1,0 +1,138 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: spotly-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: spotly_users
+      MYSQL_USER: spotly
+      MYSQL_PASSWORD: spotly
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpassword" ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+    networks:
+      - spotly-network
+
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  solr:
+    image: solr:9
+    container_name: solr
+    ports:
+      - "8983:8983"
+    volumes:
+      - solr_data:/var/solr
+    command: solr-precreate properties
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  memcached:
+    image: memcached:1.6
+    container_name: memcached
+    ports:
+      - "11211:11211"
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  users-api:
+    build: ./backend/users-api
+    container_name: spotly-users-api
+    environment:
+      - SERVER_PORT=8081
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=spotly
+      - DB_PASSWORD=spotly
+      - DB_NAME=spotly_users
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  properties-api:
+    build: ./backend/properties-api
+    container_name: spotly-properties-api
+    port      - "8082:8082"
+    environment:
+      SERVER_PORT: "8082"
+      MONGO_URI: "mongodb://mongo:27017/spotly_properties"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      USERS_API_URL: "http://spotly-users-api:8081"
+    depends_on:
+      - mongo
+      - rabbitmq
+      - spotly-users-api
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  search-api:
+    build: ./backend/search-api
+    container_name: spotly-search-api
+    environment:
+      DB_DSN: "root:root@tcp(mysql:3306)/spotly?parseTime=true&loc=Local"
+      SOLR_URL: "http://solr:8983/solr/properties"
+      RABBITMQ_URL: "amqp://spotly:spotly@rabbitmq:5672/"
+      MEMCACHED_ADDR: "memcached:11211"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: spotly-frontend
+    ports:
+      - "3000:3000"
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  mongo_data:
+  rabbitmq_data:
+  solr_data:
+
+
+networks:
+  spotly-network:
+    driver: bridge

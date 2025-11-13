@@ -33,8 +33,8 @@ type SearchRequest struct {
 	// PageSize es el tamaño de página para paginación (default: 10)
 	PageSize int `json:"pageSize" form:"pageSize"`
 
-	// SortBy es el campo para ordenar los resultados (default: "price_per_night")
-	// Opciones comunes: "price_per_night", "created_at", "bedrooms", etc.
+	// SortBy es el campo para ordenar los resultados (default: "price")
+	// Opciones comunes: "price", "created_at", "bedrooms", etc.
 	SortBy string `json:"sortBy" form:"sortBy"`
 
 	// SortOrder es el orden de clasificación: "asc" o "desc" (default: "asc")

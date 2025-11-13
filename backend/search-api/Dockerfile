@@ -16,8 +16,8 @@ COPY . .
 # Build the binary
 RUN go build -o search-api .
 
-# Expose port 8082
-EXPOSE 8082
+# Expose port 8083
+EXPOSE 8083
 
 # Run the binary
 CMD ["./search-api"]

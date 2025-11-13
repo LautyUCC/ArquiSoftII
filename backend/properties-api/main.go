@@ -16,6 +16,15 @@ import (
 
 func main() {
 	// ============================================
+	// SECCIÓN 0: CARGAR CONFIGURACIÓN
+	// ============================================
+
+	// Cargar configuración desde variables de entorno
+	if err := config.Load(); err != nil {
+		log.Fatalf("❌ Error cargando configuración: %v", err)
+	}
+
+	// ============================================
 	// SECCIÓN 1: CONEXIÓN A BASE DE DATOS
 	// ============================================
 
@@ -36,7 +45,11 @@ func main() {
 
 	// Inicializar cliente de usuarios con URL del servicio users-api
 	// Este cliente se comunica con el microservicio de usuarios para validar usuarios
-	usersClientURL := "http://users-api:8080"
+	// Usar la URL desde configuración (variable de entorno USERS_API_URL)
+	usersClientURL := config.AppConfig.UsersAPI.BaseURL
+	if usersClientURL == "" {
+		usersClientURL = "http://spotly-users-api:8081" // Valor por defecto si no está configurado
+	}
 	usersClient := clients.NewUsersClient(usersClientURL)
 
 	// Inicializar cliente de RabbitMQ con URL del broker
@@ -90,6 +103,18 @@ func main() {
 	// Configurar router Gin
 	// Gin es el framework web que maneja las rutas HTTP
 	router := gin.Default()
+        router.Use(func(c *gin.Context) {
+            c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+            c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    
+            if c.Request.Method == "OPTIONS" {
+                c.AbortWithStatus(204)
+                return
+            }
+    
+            c.Next()
+         })
 
 	// Middleware global para logging y recovery
 	router.Use(gin.Logger())
@@ -138,8 +163,12 @@ func main() {
 	// SECCIÓN 8: INICIO DEL SERVIDOR
 	// ============================================
 
-	// Configurar dirección del servidor
-	serverPort := ":8081"
+	// Obtener puerto desde configuración (variable de entorno SERVER_PORT)
+	port := config.AppConfig.ServerPort
+	if port == "" {
+		port = "8082" // Valor por defecto si no está configurado
+	}
+	serverPort := ":" + port
 
 	fmt.Println("🚀 Iniciando servidor Properties API...")
 	fmt.Printf("   Puerto: %s\n", serverPort)
