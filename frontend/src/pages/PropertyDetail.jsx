@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { propertiesAPI } from '../services/api';
-import { MapPin, Users, Bed, Bath, ArrowLeft, Check } from 'lucide-react';
+import { MapPin, Users, ArrowLeft, Check } from 'lucide-react';
 
 function PropertyDetail() {
   const { id } = useParams();
@@ -9,6 +9,12 @@ function PropertyDetail() {
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState(false);
+  const [bookingData, setBookingData] = useState({
+    checkIn: '',
+    checkOut: '',
+    guests: 1
+  });
+  const [bookingError, setBookingError] = useState('');
 
   useEffect(() => {
     loadProperty();
@@ -26,11 +32,71 @@ function PropertyDetail() {
   };
 
   const handleBooking = async () => {
+    setBookingError('');
+
+    // Validaciones
+    if (!bookingData.checkIn) {
+      setBookingError('Por favor selecciona la fecha de entrada');
+      return;
+    }
+
+    if (!bookingData.checkOut) {
+      setBookingError('Por favor selecciona la fecha de salida');
+      return;
+    }
+
+    const checkIn = new Date(bookingData.checkIn);
+    const checkOut = new Date(bookingData.checkOut);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (checkIn < today) {
+      setBookingError('La fecha de entrada no puede ser en el pasado');
+      return;
+    }
+
+    if (checkOut <= checkIn) {
+      setBookingError('La fecha de salida debe ser posterior a la entrada');
+      return;
+    }
+
+    // Calcular número de noches
+    const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+    
+    // Validar que la reserva no sea mayor a 30 noches
+    if (nights > 30) {
+      setBookingError('La reserva no puede ser mayor a 30 noches');
+      return;
+    }
+
+    if (bookingData.guests < 1) {
+      setBookingError('Debe haber al menos 1 huésped');
+      return;
+    }
+
+    if (bookingData.guests > property.capacity) {
+      setBookingError(`Esta propiedad solo tiene capacidad para ${property.capacity} huéspedes`);
+      return;
+    }
+
     setBooking(true);
-    // Simular reserva (aquí irá la llamada real a la API)
+    
+    // Calcular precio total (las noches ya fueron calculadas arriba)
+    const totalPrice = Math.round(property.price * nights);
+
+    // Simular reserva
     setTimeout(() => {
       setBooking(false);
-      navigate('/search');
+      navigate('/congrats', { 
+        state: { 
+          property: property.title,
+          checkIn: bookingData.checkIn,
+          checkOut: bookingData.checkOut,
+          guests: bookingData.guests,
+          nights,
+          totalPrice
+        }
+      });
     }, 1500);
   };
 
@@ -92,26 +158,14 @@ function PropertyDetail() {
 
                 <div className="flex items-center text-gray-600 mb-6">
                   <MapPin size={20} className="mr-2" />
-                  <span className="text-lg">{property.location}, {property.country}</span>
+                  <span className="text-lg">{property.location}</span>
                 </div>
 
                 <div className="flex gap-6 mb-8 pb-8 border-b">
                   <div className="flex items-center gap-2">
                     <Users size={20} className="text-gray-600" />
-                    <span>{property.capacitys} huéspedes</span>
+                    <span>{property.capacity} huéspedes</span>
                   </div>
-                  {property.bedrooms > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Bed size={20} className="text-gray-600" />
-                      <span>{property.bedrooms} habitaciones</span>
-                    </div>
-                  )}
-                  {property.bathrooms > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Bath size={20} className="text-gray-600" />
-                      <span>{property.bathrooms} baños</span>
-                    </div>
-                  )}
                 </div>
 
                 <div className="mb-8">
@@ -130,7 +184,7 @@ function PropertyDetail() {
                           <Check size={20} className="text-green-600" />
                           <span className="text-gray-700 capitalize">{amenity}</span>
                         </div>
-                        ))}
+                      ))}
                     </div>
                   </div>
                 )}
@@ -141,9 +195,63 @@ function PropertyDetail() {
                 <div className="sticky top-24 bg-gray-50 rounded-2xl p-6 shadow-lg">
                   <div className="mb-6">
                     <p className="text-3xl font-bold text-primary">
-                      ${Match.round(property.price)}
+                      ${Math.round(property.price)}
                     </p>
                     <p className="text-gray-600">por noche</p>
+                  </div>
+
+                  {bookingError && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-red-600 text-sm">{bookingError}</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Fecha de entrada
+                      </label>
+                      <input
+                        type="date"
+                        value={bookingData.checkIn}
+                        onChange={(e) => setBookingData({...bookingData, checkIn: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Fecha de salida
+                      </label>
+                      <input
+                        type="date"
+                        value={bookingData.checkOut}
+                        onChange={(e) => setBookingData({...bookingData, checkOut: e.target.value})}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        min={bookingData.checkIn || new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Número de huéspedes
+                      </label>
+                      <input
+                        type="number"
+                        value={bookingData.guests}
+                        onChange={(e) => {
+                        const value = parseInt(e.target.value) || 1;
+                        setBookingData({...bookingData, guests: Math.min(value, property.capacity)});
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        min="1"
+                        max={property.capacity}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Máximo: {property.capacity} huéspedes
+                      </p>
+                    </div>
                   </div>
 
                   <button
