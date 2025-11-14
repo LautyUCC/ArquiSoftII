@@ -29,8 +29,10 @@ export const authAPI = {
 
 // Properties endpoints
 export const propertiesAPI = {
-  search: (params) =>
-      axios.get('http://localhost:8083/search', { params }),
+  search: ({ q, ...params }) =>
+      axios.get('http://localhost:8083/search', {
+        params: { query: q, ...params }
+      }),
 
   getById: (id) =>
       axios.get(`http://localhost:8082/api/properties/${id}`),
