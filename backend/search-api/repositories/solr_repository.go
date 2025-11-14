@@ -199,11 +199,12 @@ func (r *solrRepository) Search(ctx context.Context, request dto.SearchRequest) 
 
 	// Convertir documentos de Solr a domain.Property
 	properties := make([]domain.Property, 0, len(solrResp.Response.Docs))
-	for _, doc := range solrResp.Response.Docs {
+	for i, doc := range solrResp.Response.Docs {
+		log.Printf("📥 Documento %d de Solr: %+v", i+1, doc)
 		property, err := r.solrDocToProperty(doc)
 		if err != nil {
 			// Log error pero continuar con otros documentos
-			fmt.Printf("error convirtiendo documento de Solr: %v\n", err)
+			log.Printf("❌ Error convirtiendo documento de Solr: %v", err)
 			continue
 		}
 		properties = append(properties, property)
