@@ -116,7 +116,7 @@ services:
       SOLR_URL: "http://solr:8983/solr/properties"
       RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
       MEMCACHED_ADDR: "memcached:11211"
-      PROPERTIES_API_URL: "http://spotly-properties-api:8082"
+      PROPERTIES_API_URL: "http://spotly-properties-api:8081/api"
     depends_on:
       - solr
       - rabbitmq

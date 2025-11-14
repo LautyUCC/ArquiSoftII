@@ -20,23 +20,23 @@ api.interceptors.request.use((config) => {
 
 // Auth endpoints
 export const authAPI = {
-  login: (usernameOrEmail, password) => 
-    api.post('/users/login', { username_or_email: usernameOrEmail, password: password }),
-  
-  register: (userData) => 
-    api.post('/users', userData),
+  login: (usernameOrEmail, password) =>
+      api.post('/users/login', { usernameOrEmail: usernameOrEmail, password: password }),
+
+  register: (userData) =>
+      api.post('/users', userData),
 };
 
 // Properties endpoints
 export const propertiesAPI = {
-  search: (params) => 
-    axios.get('http://localhost:8083/search', { params }),
-  
-  getById: (id) => 
-    axios.get(`http://localhost:8082/api/properties/${id}`),
-  
-  create: (propertyData) => 
-    axios.post('http://localhost:8082/api/properties', propertyData),
+  search: (params) =>
+      axios.get('http://localhost:8083/search', { params }),
+
+  getById: (id) =>
+      axios.get(`http://localhost:8082/api/properties/${id}`),
+
+  create: (propertyData) =>
+      axios.post('http://localhost:8082/api/properties', propertyData),
 };
 
 export default api;

@@ -38,10 +38,10 @@ type SearchService interface {
 
 // searchService es la implementación concreta de SearchService
 type searchService struct {
-	solrRepo        repositories.SolrRepository
-	cacheRepo       repositories.CacheRepository
+	solrRepo         repositories.SolrRepository
+	cacheRepo        repositories.CacheRepository
 	propertiesAPIURL string
-	httpClient      *http.Client
+	httpClient       *http.Client
 }
 
 // NewSearchService crea una nueva instancia del servicio de búsqueda
@@ -201,19 +201,18 @@ func (s *searchService) FetchPropertyFromAPI(propertyID string) (*domain.Propert
 
 	log.Printf("📦 Respuesta raw de Properties API: %s", string(body))
 
-	// Estructura para parsear la respuesta de Properties API
+	// Estructura para parsear la respuesta de Properties API (sin wrapper data)
 	var apiResponse struct {
-		Data struct {
-			ID          string   `json:"id"`
-			Title       string   `json:"title"`
-			Description string   `json:"description"`
-			Price       float64  `json:"price"`
-			Location    string   `json:"location"`
-			OwnerID     string   `json:"ownerId"`
-			Amenities   []string `json:"amenities"`
-			Capacity    int      `json:"capacity"`
-			Available   bool     `json:"available"`
-		} `json:"data"`
+		ID          string   `json:"id"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Price       float64  `json:"price"`
+		Location    string   `json:"location"`
+		OwnerID     string   `json:"ownerId"`
+		Amenities   []string `json:"amenities"`
+		Capacity    int      `json:"capacity"`
+		Available   bool     `json:"available"`
+		Images      []string `json:"images"`
 	}
 
 	if err := json.Unmarshal(body, &apiResponse); err != nil {
@@ -222,12 +221,13 @@ func (s *searchService) FetchPropertyFromAPI(propertyID string) (*domain.Propert
 		return nil, fmt.Errorf("error parseando respuesta: %v", err)
 	}
 
-	// LOG para debug - verificar que el ID se leyó correctamente
-	log.Printf("🔍 ID parseado desde JSON: '%s'", apiResponse.Data.ID)
-	log.Printf("🔍 Title parseado: '%s'", apiResponse.Data.Title)
+	// LOG para debug
+	log.Printf("🔍 ID parseado desde JSON: '%s'", apiResponse.ID)
+	log.Printf("🔍 Title parseado: '%s'", apiResponse.Title)
+	log.Printf("🖼️ Images parseado: %v (len: %d)", apiResponse.Images, len(apiResponse.Images))
 
 	// Validar que el ID no esté vacío
-	if apiResponse.Data.ID == "" {
+	if apiResponse.ID == "" {
 		log.Printf("❌ ERROR: ID está vacío después del parseo")
 		log.Printf("📄 Body completo: %s", string(body))
 		return nil, fmt.Errorf("la API devolvió una propiedad sin ID")
@@ -235,23 +235,20 @@ func (s *searchService) FetchPropertyFromAPI(propertyID string) (*domain.Propert
 
 	// Parsear CreatedAt de string a time.Time
 	var createdAt time.Time
-	// Properties API puede no incluir CreatedAt, usar tiempo actual si no está
 	createdAt = time.Now()
 
 	// Convertir OwnerID de string a uint
 	var ownerID uint
-	if apiResponse.Data.OwnerID != "" {
-		// Generar un hash simple del string para convertirlo a uint
-		hash := md5.Sum([]byte(apiResponse.Data.OwnerID))
-		// Usar los primeros 4 bytes del hash como uint
+	if apiResponse.OwnerID != "" {
+		hash := md5.Sum([]byte(apiResponse.OwnerID))
 		ownerID = uint(hash[0]) | uint(hash[1])<<8 | uint(hash[2])<<16 | uint(hash[3])<<24
 	}
 
-	// Extraer city y country de location (formato: "Ciudad, País")
+	// Extraer city y country de location
 	city := ""
 	country := ""
-	if apiResponse.Data.Location != "" {
-		parts := strings.Split(apiResponse.Data.Location, ",")
+	if apiResponse.Location != "" {
+		parts := strings.Split(apiResponse.Location, ",")
 		if len(parts) >= 1 {
 			city = strings.TrimSpace(parts[0])
 		}
@@ -260,35 +257,22 @@ func (s *searchService) FetchPropertyFromAPI(propertyID string) (*domain.Propert
 		}
 	}
 
-	// LOG para debug - verificar valores antes del mapeo
-	log.Printf("🔍 Valores desde Properties API:")
-	log.Printf("   - ID: '%s'", apiResponse.Data.ID)
-	log.Printf("   - Title: '%s'", apiResponse.Data.Title)
-	log.Printf("   - Description: '%s'", apiResponse.Data.Description)
-	log.Printf("   - Price: %f", apiResponse.Data.Price)
-	log.Printf("   - Location: '%s'", apiResponse.Data.Location)
-	log.Printf("   - Capacity: %d", apiResponse.Data.Capacity)
-	log.Printf("   - Available: %v", apiResponse.Data.Available)
-	log.Printf("   - City extraída: '%s'", city)
-	log.Printf("   - Country extraída: '%s'", country)
-
-	// Mapear EXPLÍCITAMENTE cada campo
+	// Mapear cada campo
 	property := &domain.Property{
-		ID:            apiResponse.Data.ID,          // ← CRÍTICO
-		Title:         apiResponse.Data.Title,
-		Description:   apiResponse.Data.Description,
+		ID:            apiResponse.ID,
+		Title:         apiResponse.Title,
+		Description:   apiResponse.Description,
 		City:          city,
 		Country:       country,
-		PricePerNight: apiResponse.Data.Price,
+		PricePerNight: apiResponse.Price,
 		Bedrooms:      0,
 		Bathrooms:     0,
-		MaxGuests:     apiResponse.Data.Capacity,
-		Images:        []string{},
+		MaxGuests:     apiResponse.Capacity,
+		Images:        apiResponse.Images, // ✅ CORRECTO
 		OwnerID:       ownerID,
-		Available:     apiResponse.Data.Available,
+		Available:     apiResponse.Available,
 		CreatedAt:     createdAt,
 	}
-
 	// LOG para debug - verificar valores después del mapeo
 	log.Printf("🆔 ID mapeado: '%s'", property.ID)
 	log.Printf("📝 Title mapeado: '%s'", property.Title)
@@ -411,11 +395,11 @@ func (s *searchService) buildSearchResponse(properties []domain.Property, total 
 	}
 
 	return &dto.SearchResponse{
-		Results:     properties,
+		Results:      properties,
 		TotalResults: total,
-		Page:        page,
-		PageSize:    pageSize,
-		TotalPages:  totalPages,
+		Page:         page,
+		PageSize:     pageSize,
+		TotalPages:   totalPages,
 	}
 }
 
@@ -430,4 +414,3 @@ func (s *searchService) invalidateCache() {
 	// en el CacheRepository para soportar invalidación por patrón
 	// Por ahora, el caché se invalidará naturalmente con su TTL
 }
-

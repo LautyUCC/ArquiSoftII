@@ -1,27 +1,39 @@
 package domain
 
-import "go.mongodb.org/mongo-driver/bson/primitive"
-
 import (
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Property representa una propiedad disponible para reserva (tipo Airbnb)
-// Contiene toda la información necesaria para listar y reservar propiedades
 type Property struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Title       string             `bson:"title" json:"title"`
-	Description string             `bson:"description" json:"description"`
-	Price       float64            `bson:"price" json:"price"`
-	Location    string             `bson:"location" json:"location"`
-	OwnerID     string             `bson:"ownerId" json:"ownerId"`
-	Amenities   []string           `bson:"amenities" json:"amenities"`
-	Capacity    int                `bson:"capacity" json:"capacity"`
-	Available   bool               `bson:"available" json:"available"`
-	Images      []string           `bson:"images" json:"images"` // ← AGREGAR ESTO
-	CreatedAt   time.Time          `bson:"createdAt" json:"createdAt"`
-	UpdatedAt   time.Time          `bson:"updatedAt" json:"updatedAt"`
+	// ID es el identificador único de MongoDB
+	ID primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	// Title es el título o nombre de la propiedad
+	Title string `bson:"title" json:"title"`
+	// Description contiene la descripción detallada de la propiedad
+	Description string `bson:"description" json:"description"`
+	// Location es la ubicación completa de la propiedad
+	Location string `bson:"location" json:"location"`
+	// Price es el precio por noche de la propiedad
+	Price float64 `bson:"price" json:"price"`
+	// Capacity es la cantidad máxima de huéspedes que puede alojar la propiedad
+	Capacity int `bson:"capacity" json:"capacity"`
+	// Amenities son las comodidades de la propiedad
+	Amenities []string `bson:"amenities" json:"amenities"`
+	// Images es una lista de URLs de imágenes de la propiedad
+	Images []string `bson:"images" json:"images"`
+	// OwnerID es el identificador del usuario propietario de la propiedad
+	OwnerID string `bson:"ownerId" json:"ownerId"`
+	// Available indica si la propiedad está disponible para reserva
+	Available bool `bson:"available" json:"available"`
+	// CreatedAt es la fecha y hora de creación del registro
+	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	// UpdatedAt es la fecha y hora de última actualización
+	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`
 }
+
 type Booking struct {
 	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	PropertyID string             `bson:"propertyId" json:"propertyId"`
@@ -34,7 +46,6 @@ type Booking struct {
 }
 
 // PropertyUpdate representa los campos actualizables de una propiedad
-// Usa punteros para permitir actualizaciones parciales (solo campos no nil se actualizan)
 type PropertyUpdate struct {
 	Title       *string   `json:"title,omitempty" bson:"title,omitempty"`
 	Description *string   `json:"description,omitempty" bson:"description,omitempty"`
