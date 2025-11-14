@@ -6,38 +6,44 @@ import Congrats from './pages/Congrats';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route 
-          path="/search" 
-          element={
-            <ProtectedRoute>
-              <Search />
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/property/:id" 
-          element={
-            <ProtectedRoute>
-              <PropertyDetail />
-            </ProtectedRoute>
-          } 
-        />
-        <Route 
-          path="/congrats" 
-          element={
-            <ProtectedRoute>
-              <Congrats />
-            </ProtectedRoute>
-          } 
-        />
-      </Routes>
-    </Router>
-  );
+    return (
+        <Router>
+            <Routes>
+                <Route path="/" element={<Navigate to="/login" replace />} />
+                <Route path="/login" element={<Login />} />
+
+                <Route
+                    path="/search"
+                    element={
+                        <ProtectedRoute>
+                            <Search />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/property/:id"
+                    element={
+                        <ProtectedRoute>
+                            <PropertyDetail />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/congrats"
+                    element={
+                        <ProtectedRoute>
+                            <Congrats />
+                        </ProtectedRoute>
+                    }
+                />
+
+                {/* Wildcard route - Cualquier ruta no existente */}
+                <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+        </Router>
+    );
 }
 
 export default App;
