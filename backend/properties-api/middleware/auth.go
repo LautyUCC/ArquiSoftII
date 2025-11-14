@@ -2,73 +2,73 @@ package middleware
 
 import (
 	"net/http"
-	"properties-api/clients"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
-// AuthMiddleware valida el token de autenticación
-func AuthMiddleware(userClient *clients.UserClient) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "token de autorización requerido"})
-			c.Abort()
-			return
-		}
-
-		// Extraer el token (formato: "Bearer <token>")
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "formato de token inválido"})
-			c.Abort()
-			return
-		}
-
-		token := parts[1]
-
-		// Validar el token con users-api
-		user, err := userClient.ValidateUserWithToken(token)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "token inválido o expirado"})
-			c.Abort()
-			return
-		}
-
-		// Guardar información del usuario en el contexto
-		c.Set("userID", user.ID)
-		c.Set("userEmail", user.Email)
-		c.Set("username", user.Username)
-
-		c.Next()
-	}
+// Claims define la estructura de los claims del JWT
+type Claims struct {
+	UserID   uint   `json:"user_id"`
+	Username string `json:"username"`
+	UserType string `json:"user_type"`
+	jwt.RegisteredClaims
 }
 
-// OptionalAuthMiddleware valida el token si está presente, pero no falla si no está
-func OptionalAuthMiddleware(userClient *clients.UserClient) gin.HandlerFunc {
+// AuthMiddleware valida el token JWT
+func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.Next()
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header requerido"})
+			c.Abort()
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.Next()
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Formato de Authorization inválido"})
+			c.Abort()
 			return
 		}
 
-		token := parts[1]
-		user, err := userClient.ValidateUserWithToken(token)
-		if err == nil {
-			c.Set("userID", user.ID)
-			c.Set("userEmail", user.Email)
-			c.Set("username", user.Username)
+		tokenString := parts[1]
+		token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+			return []byte(jwtSecret), nil
+		})
+
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token inválido"})
+			c.Abort()
+			return
 		}
+
+		claims, ok := token.Claims.(*Claims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Claims inválidos"})
+			c.Abort()
+			return
+		}
+
+		c.Set("userID", claims.UserID)
+		c.Set("username", claims.Username)
+		c.Set("userType", claims.UserType)
+		c.Set("isAdmin", claims.UserType == "admin")
 
 		c.Next()
 	}
 }
 
+// AdminRequired requiere que el usuario sea admin
+func AdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		isAdmin, exists := c.Get("isAdmin")
+		if !exists || !isAdmin.(bool) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Se requieren permisos de administrador"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}

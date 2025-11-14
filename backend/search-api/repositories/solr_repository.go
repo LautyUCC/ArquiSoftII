@@ -86,9 +86,9 @@ func (r *solrRepository) Search(ctx context.Context, request dto.SearchRequest) 
 	// Construir query de búsqueda por texto
 	if request.Query != "" {
 		// Búsqueda en title, city, country
-		query := fmt.Sprintf("(title:*%s* OR city:*%s* OR country:*%s*)", 
-			escapeSolrQuery(request.Query), 
-			escapeSolrQuery(request.Query), 
+		query := fmt.Sprintf("(title:*%s* OR city:*%s* OR country:*%s*)",
+			escapeSolrQuery(request.Query),
+			escapeSolrQuery(request.Query),
 			escapeSolrQuery(request.Query))
 		params.Set("q", query)
 	} else {
@@ -199,11 +199,12 @@ func (r *solrRepository) Search(ctx context.Context, request dto.SearchRequest) 
 
 	// Convertir documentos de Solr a domain.Property
 	properties := make([]domain.Property, 0, len(solrResp.Response.Docs))
-	for _, doc := range solrResp.Response.Docs {
+	for i, doc := range solrResp.Response.Docs {
+		log.Printf("📥 Documento %d de Solr: %+v", i+1, doc)
 		property, err := r.solrDocToProperty(doc)
 		if err != nil {
 			// Log error pero continuar con otros documentos
-			fmt.Printf("error convirtiendo documento de Solr: %v\n", err)
+			log.Printf("❌ Error convirtiendo documento de Solr: %v", err)
 			continue
 		}
 		properties = append(properties, property)
@@ -220,7 +221,7 @@ func (r *solrRepository) IndexProperty(ctx context.Context, property domain.Prop
 	solrProp := r.propertyToSolr(property)
 
 	// Log para debug - verificar que todos los campos se mapearon
-	log.Printf("🔍 SolrProperty mapeado - ID: %s, Title: %s, Price: %f, City: %s, Country: %s", 
+	log.Printf("🔍 SolrProperty mapeado - ID: %s, Title: %s, Price: %f, City: %s, Country: %s",
 		solrProp.ID, solrProp.Title, solrProp.PricePerNight, solrProp.City, solrProp.Country)
 
 	// Serializar a JSON
@@ -503,7 +504,7 @@ func (r *solrRepository) solrDocToProperty(doc map[string]interface{}) (domain.P
 	}
 
 	// LOG para verificar valores mapeados
-	log.Printf("✅ Property mapeado - ID: '%s', Title: '%s', PricePerNight: %f", 
+	log.Printf("✅ Property mapeado - ID: '%s', Title: '%s', PricePerNight: %f",
 		property.ID, property.Title, property.PricePerNight)
 
 	return property, nil
@@ -519,4 +520,3 @@ func escapeSolrQuery(query string) string {
 	}
 	return escaped
 }
-

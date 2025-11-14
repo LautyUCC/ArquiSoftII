@@ -1,60 +1,50 @@
 package dto
 
-import "users-api/domain"
-
-// CreateUserRequest representa el request para crear un usuario
-// Esto es lo que el frontend te envía cuando alguien se registra
+// CreateUserRequest DTO para crear un nuevo usuario
 type CreateUserRequest struct {
 	Username  string `json:"username" binding:"required,min=3,max=50"`
 	Email     string `json:"email" binding:"required,email"`
 	Password  string `json:"password" binding:"required,min=6"`
-	FirstName string `json:"first_name" binding:"required"`
-	LastName  string `json:"last_name" binding:"required"`
+	FirstName string `json:"firstName" binding:"required"`
+	LastName  string `json:"lastName" binding:"required"`
 }
 
-// LoginRequest representa el request para login
-// El usuario puede loguearse con username O email
+// LoginRequest DTO para login
 type LoginRequest struct {
-	UsernameOrEmail string `json:"username_or_email" binding:"required"`
+	UsernameOrEmail string `json:"usernameOrEmail" binding:"required"`
 	Password        string `json:"password" binding:"required"`
 }
 
-// UpdateUserRequest representa el request para actualizar un usuario
-// Todos los campos son opcionales
+// UpdateUserRequest DTO para actualizar usuario
 type UpdateUserRequest struct {
-	Username  string `json:"username,omitempty"`
-	Email     string `json:"email,omitempty" binding:"omitempty,email"`
-	Password  string `json:"password,omitempty" binding:"omitempty,min=6"`
-	FirstName string `json:"first_name,omitempty"`
-	LastName  string `json:"last_name,omitempty"`
+	Email     *string `json:"email"`
+	FirstName *string `json:"firstName"`
+	LastName  *string `json:"lastName"`
+	Password  *string `json:"password"`
 }
 
-// LoginResponse representa la respuesta del login
-// Devuelves el token JWT y los datos del usuario
-type LoginResponse struct {
-	Token string      `json:"token"`
-	User  domain.User `json:"user"`
-}
-
-// UserResponse representa la respuesta con datos de usuario
-// (Opcional, si querés una respuesta más limpia sin algunos campos)
+// UserResponse DTO de respuesta
 type UserResponse struct {
 	ID        uint   `json:"id"`
 	Username  string `json:"username"`
 	Email     string `json:"email"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	UserType  string `json:"user_type"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	UserType  string `json:"userType"`
 }
 
-// ErrorResponse representa una respuesta de error
+// LoginResponse DTO de respuesta del login
+type LoginResponse struct {
+	Token string       `json:"token"`
+	User  UserResponse `json:"user"`
+}
+
+// ErrorResponse DTO de respuesta de error
 type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
+	Error string `json:"error"`
 }
 
-// SuccessResponse representa una respuesta exitosa
+// SuccessResponse DTO de respuesta exitosa
 type SuccessResponse struct {
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Message string `json:"message"`
 }

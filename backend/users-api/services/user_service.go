@@ -2,184 +2,192 @@ package services
 
 import (
 	"errors"
-	"strings"
 	"users-api/domain"
 	"users-api/dto"
 	"users-api/repositories"
 	"users-api/utils"
 )
 
-// UserService define la interfaz del servicio
 type UserService interface {
-	CreateUser(req dto.CreateUserRequest) (*domain.User, error)
-	GetUserByID(id uint) (*domain.User, error)
-	Login(req dto.LoginRequest) (*dto.LoginResponse, error)
+	CreateUser(userDTO dto.CreateUserRequest) (dto.UserResponse, error)
+	Login(loginDTO dto.LoginRequest) (dto.LoginResponse, error)
+	GetUserByID(id uint) (dto.UserResponse, error)
+	UpdateUser(id uint, updateDTO dto.UpdateUserRequest) error
+	DeleteUser(id uint) error
+	GetAllUsers() ([]dto.UserResponse, error)
 }
 
-// userService es la implementación real del servicio
-// Tiene un repositorio para acceder a la base de datos
 type userService struct {
 	repo repositories.UserRepository
 }
 
-// NewUserService crea una nueva instancia del servicio
 func NewUserService(repo repositories.UserRepository) UserService {
-	return &userService{repo: repo}
+	return &userService{
+		repo: repo,
+	}
 }
 
-// CreateUser crea un nuevo usuario
-// Aquí va toda la lógica: validaciones, hashear password, etc.
-func (s *userService) CreateUser(req dto.CreateUserRequest) (*domain.User, error) {
-	// 1. Verificar si el username ya existe
-	existingUser, _ := s.repo.GetByUsername(req.Username)
+// CreateUser crea un nuevo usuario con contraseña hasheada
+func (s *userService) CreateUser(userDTO dto.CreateUserRequest) (dto.UserResponse, error) {
+	// Validar que el username no exista
+	existingUser, _ := s.repo.GetByUsername(userDTO.Username)
 	if existingUser != nil {
-		return nil, errors.New("username already exists")
+		return dto.UserResponse{}, errors.New("el username ya existe")
 	}
 
-	// 2. Verificar si el email ya existe
-	existingUser, _ = s.repo.GetByEmail(req.Email)
-	if existingUser != nil {
-		return nil, errors.New("email already exists")
+	// Validar que el email no exista
+	existingEmail, _ := s.repo.GetByEmail(userDTO.Email)
+	if existingEmail != nil {
+		return dto.UserResponse{}, errors.New("el email ya existe")
 	}
 
-	// 3. Hashear la contraseña
-	// NUNCA guardamos contraseñas en texto plano
-	hashedPassword, err := utils.HashPassword(req.Password)
+	// Hashear la contraseña
+	hashedPassword, err := utils.HashPassword(userDTO.Password)
 	if err != nil {
-		return nil, errors.New("error hashing password")
+		return dto.UserResponse{}, errors.New("error hasheando contraseña")
 	}
 
-	// 4. Crear el objeto User
-	user := &domain.User{
-		Username:  req.Username,
-		Email:     req.Email,
-		Password:  hashedPassword, // Guardamos el hash, no la contraseña
-		FirstName: req.FirstName,
-		LastName:  req.LastName,
-		UserType:  domain.UserTypeNormal, // Por defecto es usuario normal
+	// Crear el usuario con user_type por defecto "normal"
+	user := domain.User{
+		Username:  userDTO.Username,
+		Email:     userDTO.Email,
+		Password:  hashedPassword,
+		FirstName: userDTO.FirstName,
+		LastName:  userDTO.LastName,
+		UserType:  "normal", // Por defecto todos los usuarios son normales
 	}
 
-	// 5. Guardar en la base de datos
-	err = s.repo.Create(user)
+	// Guardar en la base de datos
+	err = s.repo.Create(&user)
+	if err != nil {
+		return dto.UserResponse{}, err
+	}
+
+	// Retornar el DTO de respuesta (sin la contraseña)
+	return s.toDTO(user), nil
+}
+
+// Login valida credenciales y genera token JWT
+func (s *userService) Login(loginDTO dto.LoginRequest) (dto.LoginResponse, error) {
+	// Buscar usuario por username o email
+	var user *domain.User
+	var err error
+
+	// Intentar buscar por username primero
+	user, err = s.repo.GetByUsername(loginDTO.UsernameOrEmail)
+	if err != nil || user == nil {
+		// Si no se encuentra, intentar por email
+		user, err = s.repo.GetByEmail(loginDTO.UsernameOrEmail)
+		if err != nil || user == nil {
+			return dto.LoginResponse{}, errors.New("credenciales inválidas")
+		}
+	}
+
+	// Verificar la contraseña
+	if !utils.CheckPasswordHash(loginDTO.Password, user.Password) {
+		return dto.LoginResponse{}, errors.New("credenciales inválidas")
+	}
+
+	// Generar token JWT
+	token, err := utils.GenerateToken(user.ID, user.Username, user.UserType)
+	if err != nil {
+		return dto.LoginResponse{}, errors.New("error generando token")
+	}
+
+	// Retornar respuesta con token y datos del usuario
+	return dto.LoginResponse{
+		Token: token,
+		User:  s.toDTO(*user),
+	}, nil
+}
+
+// GetUserByID obtiene un usuario por su ID
+func (s *userService) GetUserByID(id uint) (dto.UserResponse, error) {
+	user, err := s.repo.GetByID(id)
+	if err != nil {
+		return dto.UserResponse{}, err
+	}
+	if user == nil {
+		return dto.UserResponse{}, errors.New("usuario no encontrado")
+	}
+
+	return s.toDTO(*user), nil
+}
+
+// UpdateUser actualiza los datos de un usuario
+func (s *userService) UpdateUser(id uint, updateDTO dto.UpdateUserRequest) error {
+	// Obtener usuario existente
+	user, err := s.repo.GetByID(id)
+	if err != nil || user == nil {
+		return errors.New("usuario no encontrado")
+	}
+
+	// Actualizar solo los campos que vienen en el DTO
+	if updateDTO.Email != nil {
+		// Verificar que el nuevo email no esté en uso por otro usuario
+		existingEmail, _ := s.repo.GetByEmail(*updateDTO.Email)
+		if existingEmail != nil && existingEmail.ID != id {
+			return errors.New("el email ya está en uso")
+		}
+		user.Email = *updateDTO.Email
+	}
+
+	if updateDTO.FirstName != nil {
+		user.FirstName = *updateDTO.FirstName
+	}
+
+	if updateDTO.LastName != nil {
+		user.LastName = *updateDTO.LastName
+	}
+
+	if updateDTO.Password != nil {
+		// Hashear la nueva contraseña
+		hashedPassword, err := utils.HashPassword(*updateDTO.Password)
+		if err != nil {
+			return errors.New("error hasheando nueva contraseña")
+		}
+		user.Password = hashedPassword
+	}
+
+	// Guardar cambios
+	return s.repo.Update(user)
+}
+
+// DeleteUser elimina un usuario por su ID
+func (s *userService) DeleteUser(id uint) error {
+	// Verificar que el usuario existe
+	user, err := s.repo.GetByID(id)
+	if err != nil || user == nil {
+		return errors.New("usuario no encontrado")
+	}
+
+	return s.repo.Delete(id)
+}
+
+// GetAllUsers obtiene todos los usuarios (solo para admin)
+func (s *userService) GetAllUsers() ([]dto.UserResponse, error) {
+	users, err := s.repo.GetAll()
 	if err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	// Convertir cada usuario a DTO
+	userDTOs := make([]dto.UserResponse, len(users))
+	for i, user := range users {
+		userDTOs[i] = s.toDTO(user)
+	}
+
+	return userDTOs, nil
 }
 
-// GetUserByID obtiene un usuario por su ID
-// Esta función es simple, solo delega al repositorio
-func (s *userService) GetUserByID(id uint) (*domain.User, error) {
-	return s.repo.GetByID(id)
+// toDTO convierte un domain.User a dto.UserResponse
+func (s *userService) toDTO(user domain.User) dto.UserResponse {
+	return dto.UserResponse{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		UserType:  user.UserType,
+	}
 }
-
-// Login autentica un usuario y genera un token JWT
-// Esta es la función más importante del servicio
-func (s *userService) Login(req dto.LoginRequest) (*dto.LoginResponse, error) {
-	var user *domain.User
-	var err error
-
-	// 1. Determinar si el usuario está intentando loguearse con username o email
-	// Si contiene "@" asumimos que es email
-	if strings.Contains(req.UsernameOrEmail, "@") {
-		user, err = s.repo.GetByEmail(req.UsernameOrEmail)
-	} else {
-		user, err = s.repo.GetByUsername(req.UsernameOrEmail)
-	}
-
-	// 2. Si no encontramos el usuario, devolvemos error genérico
-	// (Por seguridad, no decimos si el username existe o no)
-	if err != nil {
-		return nil, errors.New("invalid credentials")
-	}
-
-	// 3. Verificar que la contraseña sea correcta
-	// Comparamos el hash guardado con la contraseña que envió
-	if !utils.CheckPasswordHash(req.Password, user.Password) {
-		return nil, errors.New("invalid credentials")
-	}
-
-	// 4. Generar el token JWT
-	// Este token contiene: user_id, username, user_type
-	token, err := utils.GenerateToken(user.ID, user.Username, string(user.UserType))
-	if err != nil {
-		return nil, errors.New("error generating token")
-	}
-
-	// 5. Devolver el token y los datos del usuario
-	return &dto.LoginResponse{
-		Token: token,
-		User:  *user,
-	}, nil
-
-	// UpdateUser actualiza los datos de un usuario existente
-	func (s *userService) UpdateUser(id uint, req dto.UpdateUserRequest) (*domain.User, error) {
-		// 1. Verificar que el usuario existe
-		user, err := s.repo.GetByID(id)
-		if err != nil {
-			return nil, errors.New("user not found")
-		}
-
-		// 2. Si se proporciona un nuevo username, verificar que no esté en uso
-		if req.Username != "" && req.Username != user.Username {
-			existingUser, _ := s.repo.GetByUsername(req.Username)
-			if existingUser != nil {
-				return nil, errors.New("username already exists")
-			}
-			user.Username = req.Username
-		}
-
-		// 3. Si se proporciona un nuevo email, verificar que no esté en uso
-		if req.Email != "" && req.Email != user.Email {
-			existingUser, _ := s.repo.GetByEmail(req.Email)
-			if existingUser != nil {
-				return nil, errors.New("email already exists")
-			}
-			user.Email = req.Email
-		}
-
-		// 4. Actualizar otros campos si se proporcionan
-		if req.FirstName != "" {
-			user.FirstName = req.FirstName
-		}
-
-		if req.LastName != "" {
-			user.LastName = req.LastName
-		}
-
-		// 5. Si se proporciona una nueva contraseña, hashearla
-		if req.Password != "" {
-			hashedPassword, err := utils.HashPassword(req.Password)
-			if err != nil {
-				return nil, errors.New("error hashing password")
-			}
-			user.Password = hashedPassword
-		}
-
-		// 6. Guardar los cambios en la base de datos
-		err = s.repo.Update(user)
-		if err != nil {
-			return nil, err
-		}
-
-		return user, nil
-	}
-
-	// DeleteUser elimina un usuario por su ID
-	func (s *userService) DeleteUser(id uint) error {
-		// 1. Verificar que el usuario existe
-		_, err := s.repo.GetByID(id)
-		if err != nil {
-		return errors.New("user not found")
-	}
-
-		// 2. Eliminar el usuario
-		return s.repo.Delete(id)
-	}
-
-	// GetAllUsers obtiene todos los usuarios del sistema
-	// Solo accesible por administradores
-	func (s *userService) GetAllUsers() ([]domain.User, error) {
-		return s.repo.GetAll()
-	}

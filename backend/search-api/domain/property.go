@@ -43,4 +43,3 @@ type Property struct {
 	// CreatedAt es la fecha y hora de creación del registro
 	CreatedAt time.Time `json:"createdAt"`
 }
-

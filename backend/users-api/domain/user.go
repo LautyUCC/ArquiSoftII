@@ -18,7 +18,7 @@ type User struct {
 	Password  string    `gorm:"not null" json:"-"` // El "-" oculta el password en JSON
 	FirstName string    `json:"first_name"`
 	LastName  string    `json:"last_name"`
-	UserType  UserType  `gorm:"type:varchar(20);default:'normal'" json:"user_type"`
+	UserType  string    `gorm:"default:'normal'"` // ← Cambiar a string
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

@@ -43,7 +43,7 @@ func NewCacheRepository(memcachedHost string) CacheRepository {
 	// Inicializar caché local con ccache
 	localCache := ccache.New(ccache.Configure[*cacheData]().
 		MaxSize(1000).
-		PercentToPrune(10))
+		ItemsToPrune(100)) // ← Cambiar a ItemsToPrune
 
 	// Inicializar cliente de Memcached
 	memcachedClient := memcache.New(memcachedHost)

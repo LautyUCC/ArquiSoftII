@@ -15,29 +15,12 @@ import (
 // PropertyRepository define la interfaz para las operaciones de repositorio de propiedades
 // Implementa el patrón de repositorio para abstraer la lógica de acceso a datos
 type PropertyRepository interface {
-	// Create crea una nueva propiedad en la base de datos
-	// Genera automáticamente un nuevo ObjectID y establece CreatedAt y UpdatedAt
 	Create(property domain.Property) (domain.Property, error)
-
-	// GetByID obtiene una propiedad por su ID (string)
-	// Convierte el string a ObjectID y realiza la búsqueda
-	// Retorna error si el ID es inválido o la propiedad no existe
 	GetByID(id string) (domain.Property, error)
-
-	// Update actualiza una propiedad existente por su ID
-	// Convierte el string a ObjectID y actualiza todos los campos de la propiedad
-	// Actualiza automáticamente el campo UpdatedAt
-	Update(id string, property domain.Property) error
-
-	// Delete elimina una propiedad por su ID
-	// Convierte el string a ObjectID y elimina el documento
-	// Retorna error si el ID es inválido o la propiedad no existe
-	Delete(id string) error
-
-	// GetByOwnerID obtiene todas las propiedades de un propietario específico
-	// Usa cursor para obtener múltiples resultados eficientemente
-	// Retorna un slice de propiedades o error si ocurre algún problema
 	GetByOwnerID(ownerID string) ([]domain.Property, error)
+	Update(id string, property domain.Property) error
+	Delete(id string) error
+	GetAll() ([]domain.Property, error) // ← AGREGAR ESTA LÍNEA
 }
 
 // propertyRepository es la implementación concreta de PropertyRepository
@@ -68,7 +51,7 @@ func (r *propertyRepository) Create(property domain.Property) (domain.Property, 
 	}
 
 	// Establecer fechas de creación y actualización en formato ISO 8601
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now()
 	property.CreatedAt = now
 	property.UpdatedAt = now
 
@@ -129,7 +112,7 @@ func (r *propertyRepository) Update(id string, property domain.Property) error {
 	}
 
 	// Actualizar el campo UpdatedAt con la fecha actual en formato ISO 8601
-	property.UpdatedAt = time.Now().Format(time.RFC3339)
+	property.UpdatedAt = time.Now()
 
 	// Asegurar que el ID de la propiedad coincida con el parámetro
 	property.ID = objectID
@@ -235,3 +218,18 @@ func (r *propertyRepository) GetByOwnerID(ownerID string) ([]domain.Property, er
 	return properties, nil
 }
 
+// GetAll obtiene todas las propiedades del sistema (solo admin)
+func (r *propertyRepository) GetAll() ([]domain.Property, error) {
+	var properties []domain.Property
+	cursor, err := r.collection.Find(context.Background(), bson.M{})
+	if err != nil {
+		return nil, fmt.Errorf("error buscando todas las propiedades: %w", err)
+	}
+	defer cursor.Close(context.Background())
+
+	if err = cursor.All(context.Background(), &properties); err != nil {
+		return nil, fmt.Errorf("error decodificando propiedades: %w", err)
+	}
+
+	return properties, nil
+}

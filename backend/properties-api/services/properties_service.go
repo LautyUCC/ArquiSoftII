@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"properties-api/clients"
-	"properties-api/dto"
 	"properties-api/domain"
+	"properties-api/dto"
 	"properties-api/repositories"
 	"properties-api/utils"
 )
@@ -20,21 +20,24 @@ type PropertyService interface {
 	// GetPropertyByID obtiene una propiedad por su ID
 	GetPropertyByID(id string) (dto.PropertyResponseDTO, error)
 
-	// UpdateProperty actualiza una propiedad existente con validación de ownership
-	UpdateProperty(id string, updateDTO dto.PropertyUpdateDTO, userID string) error
+	// UpdateProperty actualiza una propiedad existente con validación de ownership y admin
+	UpdateProperty(id string, updateDTO dto.PropertyUpdateDTO, userID string, isAdmin bool) error
 
-	// DeleteProperty elimina una propiedad con validación de ownership
-	DeleteProperty(id string, userID string) error
+	// DeleteProperty elimina una propiedad con validación de ownership y admin
+	DeleteProperty(id string, userID string, isAdmin bool) error
 
 	// GetUserProperties obtiene todas las propiedades de un usuario específico
 	GetUserProperties(userID string) ([]dto.PropertyResponseDTO, error)
+
+	// GetAllProperties obtiene todas las propiedades (solo admin)
+	GetAllProperties() ([]dto.PropertyResponseDTO, error)
 }
 
 // propertyService es la implementación concreta de PropertyService
 // Coordina las operaciones entre repositorio, cliente de usuarios y cliente de RabbitMQ
 type propertyService struct {
-	repo        repositories.PropertyRepository
-	usersClient clients.UsersClient
+	repo         repositories.PropertyRepository
+	usersClient  clients.UsersClient
 	rabbitClient clients.RabbitMQClient
 }
 
@@ -74,13 +77,13 @@ func (s *propertyService) CreateProperty(createDTO dto.PropertyCreateDTO) (dto.P
 	// 2. Calcular precio final usando CalculatePriceWithConcurrency
 	// El precio base del DTO se usa como base para el cálculo
 	finalPrice := utils.CalculatePriceWithConcurrency(
-		createDTO.Price,      // precio base
-		createDTO.Amenities,  // lista de amenidades
-		createDTO.Capacity,   // capacidad
+		createDTO.Price,     // precio base
+		createDTO.Amenities, // lista de amenidades
+		createDTO.Capacity,  // capacidad
 	)
 
 	// 3. Crear property con timestamps actuales
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now()
 	property := domain.Property{
 		Title:       createDTO.Title,
 		Description: createDTO.Description,
@@ -90,6 +93,7 @@ func (s *propertyService) CreateProperty(createDTO dto.PropertyCreateDTO) (dto.P
 		Amenities:   createDTO.Amenities,
 		Capacity:    createDTO.Capacity,
 		Available:   createDTO.Available,
+		Images:      createDTO.Images,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -124,23 +128,23 @@ func (s *propertyService) GetPropertyByID(id string) (dto.PropertyResponseDTO, e
 	return s.toDTO(property), nil
 }
 
-// UpdateProperty actualiza una propiedad existente con validación de ownership
+// UpdateProperty actualiza una propiedad existente con validación de ownership y admin
 // Implementa los siguientes pasos:
 // 1. Obtener propiedad existente
-// 2. Validar que userID == ownerID
+// 2. Validar que userID == ownerID O que sea admin
 // 3. Actualizar solo campos no vacíos
 // 4. Actualizar timestamp
 // 5. Publicar evento "update"
-func (s *propertyService) UpdateProperty(id string, updateDTO dto.PropertyUpdateDTO, userID string) error {
+func (s *propertyService) UpdateProperty(id string, updateDTO dto.PropertyUpdateDTO, userID string, isAdmin bool) error {
 	// 1. Obtener propiedad existente
 	property, err := s.repo.GetByID(id)
 	if err != nil {
 		return fmt.Errorf("error obteniendo propiedad para actualizar: %w", err)
 	}
 
-	// 2. Validar que userID == ownerID
-	if property.OwnerID != userID {
-		return fmt.Errorf("usuario con ID '%s' no tiene permisos para actualizar propiedad '%s' (owner: '%s')", userID, id, property.OwnerID)
+	// 2. Validar permisos: solo owner o admin pueden actualizar
+	if property.OwnerID != userID && !isAdmin {
+		return fmt.Errorf("forbidden: usuario con ID '%s' no tiene permisos para actualizar propiedad '%s' (owner: '%s')", userID, id, property.OwnerID)
 	}
 
 	// 3. Actualizar solo campos no vacíos (no nil)
@@ -190,9 +194,12 @@ func (s *propertyService) UpdateProperty(id string, updateDTO dto.PropertyUpdate
 	if updateDTO.Available != nil {
 		updatedProperty.Available = *updateDTO.Available
 	}
+	if updateDTO.Images != nil {
+		updatedProperty.Images = *updateDTO.Images
+	}
 
 	// 4. Actualizar timestamp
-	updatedProperty.UpdatedAt = time.Now().Format(time.RFC3339)
+	updatedProperty.UpdatedAt = time.Now()
 
 	// Guardar la actualización en el repositorio
 	err = s.repo.Update(id, updatedProperty)
@@ -209,18 +216,18 @@ func (s *propertyService) UpdateProperty(id string, updateDTO dto.PropertyUpdate
 	return nil
 }
 
-// DeleteProperty elimina una propiedad con validación de ownership
-// Valida que el usuario tenga permisos y publica evento "delete"
-func (s *propertyService) DeleteProperty(id string, userID string) error {
+// DeleteProperty elimina una propiedad con validación de ownership y admin
+// Valida que el usuario tenga permisos (owner o admin) y publica evento "delete"
+func (s *propertyService) DeleteProperty(id string, userID string, isAdmin bool) error {
 	// Obtener propiedad existente para validar ownership
 	property, err := s.repo.GetByID(id)
 	if err != nil {
 		return fmt.Errorf("error obteniendo propiedad para eliminar: %w", err)
 	}
 
-	// Validar que userID == ownerID
-	if property.OwnerID != userID {
-		return fmt.Errorf("usuario con ID '%s' no tiene permisos para eliminar propiedad '%s' (owner: '%s')", userID, id, property.OwnerID)
+	// Validar permisos: solo owner o admin pueden eliminar
+	if property.OwnerID != userID && !isAdmin {
+		return fmt.Errorf("forbidden: usuario con ID '%s' no tiene permisos para eliminar propiedad '%s' (owner: '%s')", userID, id, property.OwnerID)
 	}
 
 	// Eliminar la propiedad
@@ -255,6 +262,23 @@ func (s *propertyService) GetUserProperties(userID string) ([]dto.PropertyRespon
 	return responseDTOs, nil
 }
 
+// GetAllProperties obtiene todas las propiedades del sistema (solo para admin)
+// Retorna un slice de DTOs de respuesta o error
+func (s *propertyService) GetAllProperties() ([]dto.PropertyResponseDTO, error) {
+	properties, err := s.repo.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf("error obteniendo todas las propiedades: %w", err)
+	}
+
+	// Convertir cada propiedad del dominio a DTO
+	responseDTOs := make([]dto.PropertyResponseDTO, len(properties))
+	for i, property := range properties {
+		responseDTOs[i] = s.toDTO(property)
+	}
+
+	return responseDTOs, nil
+}
+
 // toDTO es una función privada que convierte un Property del dominio a PropertyResponseDTO
 // Centraliza la lógica de conversión para evitar duplicación de código
 func (s *propertyService) toDTO(property domain.Property) dto.PropertyResponseDTO {
@@ -268,8 +292,8 @@ func (s *propertyService) toDTO(property domain.Property) dto.PropertyResponseDT
 		Amenities:   property.Amenities,
 		Capacity:    property.Capacity,
 		Available:   property.Available,
-		CreatedAt:   property.CreatedAt,
-		UpdatedAt:   property.UpdatedAt,
+		Images:      property.Images,
+		CreatedAt:   property.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   property.UpdatedAt.Format(time.RFC3339),
 	}
 }
-

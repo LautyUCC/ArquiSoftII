@@ -2,10 +2,9 @@ package utils
 
 import (
 	"errors"
+	"github.com/golang-jwt/jwt/v5" // ✅ CORRECTO - sin versión
 	"os"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // Esta es la "llave secreta" para firmar los tokens
@@ -26,13 +25,14 @@ type Claims struct {
 func getJWTSecret() string {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "default-secret-change-in-production"
+		secret = "your-super-secret-jwt-key-change-this-in-production"
 	}
 	return secret
 }
 
 // GenerateToken genera un nuevo JWT token para un usuario
 // Se llama después del login exitoso
+// Incluye is_admin en los claims basado en el user_type
 func GenerateToken(userID uint, username, userType string) (string, error) {
 	// El token expira en 24 horas
 	expirationTime := time.Now().Add(24 * time.Hour)
@@ -41,7 +41,7 @@ func GenerateToken(userID uint, username, userType string) (string, error) {
 	claims := &Claims{
 		UserID:   userID,
 		Username: username,
-		UserType: userType,
+		UserType: userType, // "normal" o "admin"
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -72,4 +72,9 @@ func ValidateToken(tokenString string) (*Claims, error) {
 	}
 
 	return claims, nil
+}
+
+// IsAdmin es una función helper que verifica si un user_type es admin
+func IsAdmin(userType string) bool {
+	return userType == "admin"
 }
