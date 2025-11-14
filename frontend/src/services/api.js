@@ -33,10 +33,10 @@ export const propertiesAPI = {
     axios.get('http://localhost:8083/search', { params }),
   
   getById: (id) => 
-    axios.get(`http://localhost:8082/properties/${id}`),
+    axios.get(`http://localhost:8082/api/properties/${id}`),
   
   create: (propertyData) => 
-    axios.post('http://localhost:8082/properties', propertyData),
+    axios.post('http://localhost:8082/api/properties', propertyData),
 };
 
 export default api;
