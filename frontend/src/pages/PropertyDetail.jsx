@@ -30,7 +30,7 @@ function PropertyDetail() {
     // Simular reserva (aquí irá la llamada real a la API)
     setTimeout(() => {
       setBooking(false);
-      navigate('/congrats');
+      navigate('/search');
     }, 1500);
   };
 
@@ -92,13 +92,13 @@ function PropertyDetail() {
 
                 <div className="flex items-center text-gray-600 mb-6">
                   <MapPin size={20} className="mr-2" />
-                  <span className="text-lg">{property.city}, {property.country}</span>
+                  <span className="text-lg">{property.location}, {property.country}</span>
                 </div>
 
                 <div className="flex gap-6 mb-8 pb-8 border-b">
                   <div className="flex items-center gap-2">
                     <Users size={20} className="text-gray-600" />
-                    <span>{property.maxGuests} huéspedes</span>
+                    <span>{property.capacitys} huéspedes</span>
                   </div>
                   {property.bedrooms > 0 && (
                     <div className="flex items-center gap-2">
@@ -130,7 +130,7 @@ function PropertyDetail() {
                           <Check size={20} className="text-green-600" />
                           <span className="text-gray-700 capitalize">{amenity}</span>
                         </div>
-                      ))}
+                        ))}
                     </div>
                   </div>
                 )}
@@ -141,7 +141,7 @@ function PropertyDetail() {
                 <div className="sticky top-24 bg-gray-50 rounded-2xl p-6 shadow-lg">
                   <div className="mb-6">
                     <p className="text-3xl font-bold text-primary">
-                      ${property.pricePerNight}
+                      ${Match.round(property.price)}
                     </p>
                     <p className="text-gray-600">por noche</p>
                   </div>
