@@ -2,9 +2,7 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +10,7 @@ import (
 
 	"search-api/dto"
 	"search-api/services"
+	"search-api/utils"
 )
 
 // SearchController maneja las peticiones HTTP relacionadas con búsqueda
@@ -31,22 +30,22 @@ func NewSearchController(service services.SearchService) *SearchController {
 func (c *SearchController) Search(w http.ResponseWriter, r *http.Request) {
 	// Solo permitir método GET
 	if r.Method != http.MethodGet {
-		writeErrorResponse(w, http.StatusMethodNotAllowed, "Method not allowed")
+		utils.SendErrorSimple(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
 	// Parsear query parameters a SearchRequest
 	request, err := parseSearchRequest(r)
 	if err != nil {
-		log.Printf("⚠️ Error parseando query parameters: %v", err)
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Error parseando parámetros: %v", err))
+		utils.LogError("GET /search", err, r)
+		utils.SendErrorSimple(w, http.StatusBadRequest, fmt.Sprintf("Error parseando parámetros: %v", err))
 		return
 	}
 
 	// Validar parámetros
 	if err := validateSearchRequest(request); err != nil {
-		log.Printf("⚠️ Error validando request: %v", err)
-		writeErrorResponse(w, http.StatusBadRequest, err.Error())
+		utils.LogError("GET /search", err, r)
+		utils.SendErrorSimple(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -57,14 +56,14 @@ func (c *SearchController) Search(w http.ResponseWriter, r *http.Request) {
 	// Llamar al servicio
 	response, err := c.service.Search(ctx, *request)
 	if err != nil {
-		log.Printf("❌ Error en servicio de búsqueda: %v", err)
-		writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Error en búsqueda: %v", err))
+		utils.LogError("GET /search", err, r)
+		utils.SendErrorSimple(w, http.StatusInternalServerError, fmt.Sprintf("Error en búsqueda: %v", err))
 		return
 	}
 
 	// Escribir respuesta exitosa
-	writeJSONResponse(w, http.StatusOK, response)
-	log.Printf("✅ Búsqueda completada exitosamente: %d resultados", response.TotalResults)
+	utils.SendSuccess(w, http.StatusOK, response)
+	utils.LogInfo("GET /search", fmt.Sprintf("Búsqueda completada exitosamente: %d resultados", response.TotalResults), r)
 }
 
 // parseSearchRequest parsea los query parameters a SearchRequest
@@ -197,33 +196,6 @@ func validateSearchRequest(request *dto.SearchRequest) error {
 	return nil
 }
 
-// writeJSONResponse escribe una respuesta JSON exitosa
-func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Printf("⚠️ Error escribiendo respuesta JSON: %v", err)
-		// Si falla la codificación, intentar escribir un error simple
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `{"error":"Error serializando respuesta","code":500}`)
-	}
-}
-
-// writeErrorResponse escribe una respuesta de error en formato JSON
-func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	errorResponse := dto.ErrorResponse{
-		Error: message,
-		Code:  statusCode,
-	}
-
-	if err := json.NewEncoder(w).Encode(errorResponse); err != nil {
-		log.Printf("⚠️ Error escribiendo respuesta de error: %v", err)
-		// Si falla la codificación, escribir un error simple
-		fmt.Fprintf(w, `{"error":"Error serializando respuesta de error","code":500}`)
-	}
-}
+// Las funciones writeJSONResponse y writeErrorResponse han sido reemplazadas
+// por utils.SendSuccess y utils.SendError
 

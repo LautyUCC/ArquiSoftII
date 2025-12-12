@@ -22,6 +22,9 @@ type CacheRepository interface {
 
 	// Delete elimina datos del caché
 	Delete(key string)
+
+	// InvalidateAll invalida todo el caché (útil después de indexar/actualizar propiedades)
+	InvalidateAll()
 }
 
 // cacheRepository es la implementación concreta de CacheRepository
@@ -154,4 +157,30 @@ func (r *cacheRepository) Delete(key string) {
 	}
 
 	log.Printf("✅ Datos eliminados de Memcached para key: %s", key)
+}
+
+// InvalidateAll invalida todo el caché local y Memcached
+// Útil después de indexar/actualizar propiedades para forzar nuevas búsquedas
+func (r *cacheRepository) InvalidateAll() {
+	log.Println("🔄 Invalidando todo el caché (local y Memcached)")
+	
+	// Limpiar caché local (ccache no tiene método Clear, así que lo recreamos)
+	// Nota: Esto es una solución simple. En producción, podrías mantener un registro de keys
+	r.localCache = ccache.New(ccache.Configure[*cacheData]().
+		MaxSize(1000).
+		ItemsToPrune(100))
+	log.Println("✅ Caché local limpiado")
+	
+	// Nota: gomemcache no tiene método FlushAll directo
+	// El problema es que diferentes búsquedas (vacía vs con query) tienen diferentes cache keys
+	// Cuando se invalida el caché local, Memcached todavía tiene las keys antiguas
+	// Solución temporal: El caché local está limpio, así que las nuevas búsquedas consultarán Solr
+	// Las keys de Memcached expirarán naturalmente con su TTL (15 minutos)
+	// 
+	// En producción, podrías:
+	// 1. Mantener un registro de todas las cache keys con prefijo "search:" y eliminarlas
+	// 2. Usar un timestamp en la cache key para invalidar todas las keys antiguas
+	// 3. Reducir el TTL de Memcached para que expire más rápido
+	log.Println("ℹ️ Memcached: las keys expirarán naturalmente con su TTL (15 minutos)")
+	log.Println("ℹ️ Las nuevas búsquedas consultarán Solr directamente ya que el caché local está limpio")
 }

@@ -16,32 +16,33 @@ var jwtSecret = []byte(getJWTSecret())
 type Claims struct {
 	UserID   uint   `json:"user_id"`
 	Username string `json:"username"`
-	UserType string `json:"user_type"`
+	Role     string `json:"role"` // USER, ADMIN, OWNER - incluido como claim en JWT
 	jwt.RegisteredClaims
 }
 
 // getJWTSecret obtiene el secret desde variables de entorno
-// Si no existe, usa uno por defecto (solo para desarrollo)
+// REQUIERE que JWT_SECRET esté configurado, no hay valor por defecto
 func getJWTSecret() string {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "your-super-secret-jwt-key-change-this-in-production"
+		panic("JWT_SECRET no está configurado. Debe establecerse como variable de entorno.")
 	}
 	return secret
 }
 
 // GenerateToken genera un nuevo JWT token para un usuario
 // Se llama después del login exitoso
-// Incluye is_admin en los claims basado en el user_type
-func GenerateToken(userID uint, username, userType string) (string, error) {
-	// El token expira en 24 horas
-	expirationTime := time.Now().Add(24 * time.Hour)
+// Incluye el role como claim en el JWT
+// El token expira en 1 hora
+func GenerateToken(userID uint, username, role string) (string, error) {
+	// El token expira en 1 hora
+	expirationTime := time.Now().Add(1 * time.Hour)
 
 	// Creamos los "claims" (datos que va a tener el token)
 	claims := &Claims{
 		UserID:   userID,
 		Username: username,
-		UserType: userType, // "normal" o "admin"
+		Role:     role, // USER, ADMIN, OWNER - incluido como claim en JWT
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -74,7 +75,17 @@ func ValidateToken(tokenString string) (*Claims, error) {
 	return claims, nil
 }
 
-// IsAdmin es una función helper que verifica si un user_type es admin
-func IsAdmin(userType string) bool {
-	return userType == "admin"
+// IsAdmin es una función helper que verifica si un role es ADMIN
+func IsAdmin(role string) bool {
+	return role == "ADMIN"
+}
+
+// IsOwner es una función helper que verifica si un role es OWNER
+func IsOwner(role string) bool {
+	return role == "OWNER"
+}
+
+// IsUser es una función helper que verifica si un role es USER
+func IsUser(role string) bool {
+	return role == "USER"
 }

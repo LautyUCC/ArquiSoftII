@@ -171,7 +171,13 @@ func (s *searchService) FetchPropertyFromAPI(propertyID string) (*domain.Propert
 	log.Printf("🌐 Obteniendo propiedad desde API: %s", propertyID)
 
 	// Construir URL
-	url := fmt.Sprintf("%s/properties/%s", s.propertiesAPIURL, propertyID)
+	// PROPERTIES_API_URL puede incluir o no /api, así que lo manejamos
+	baseURL := s.propertiesAPIURL
+	if !strings.HasSuffix(baseURL, "/api") && !strings.HasSuffix(baseURL, "/api/") {
+		baseURL = strings.TrimSuffix(baseURL, "/") + "/api"
+	}
+	url := fmt.Sprintf("%s/properties/%s", baseURL, propertyID)
+	log.Printf("🌐 URL construida: %s", url)
 
 	// Crear request HTTP GET
 	req, err := http.NewRequest("GET", url, nil)
@@ -201,8 +207,22 @@ func (s *searchService) FetchPropertyFromAPI(propertyID string) (*domain.Propert
 
 	log.Printf("📦 Respuesta raw de Properties API: %s", string(body))
 
-	// Estructura para parsear la respuesta de Properties API (sin wrapper data)
-	var apiResponse struct {
+	// Estructura para parsear la respuesta de Properties API
+	// Puede venir envuelta en un objeto con "data" o directamente
+	var wrappedResponse struct {
+		Data struct {
+			ID          string   `json:"id"`
+			Title       string   `json:"title"`
+			Description string   `json:"description"`
+			Price       float64  `json:"price"`
+			Location    string   `json:"location"`
+			OwnerID     string   `json:"ownerId"`
+			Amenities   []string `json:"amenities"`
+			Capacity    int      `json:"capacity"`
+			Available   bool     `json:"available"`
+			Images      []string `json:"images"`
+		} `json:"data"`
+		// También puede venir directamente sin wrapper
 		ID          string   `json:"id"`
 		Title       string   `json:"title"`
 		Description string   `json:"description"`
@@ -215,10 +235,50 @@ func (s *searchService) FetchPropertyFromAPI(propertyID string) (*domain.Propert
 		Images      []string `json:"images"`
 	}
 
-	if err := json.Unmarshal(body, &apiResponse); err != nil {
+	if err := json.Unmarshal(body, &wrappedResponse); err != nil {
 		log.Printf("❌ Error parseando JSON: %v", err)
 		log.Printf("📄 Body completo: %s", string(body))
 		return nil, fmt.Errorf("error parseando respuesta: %v", err)
+	}
+
+	// Determinar si la respuesta viene envuelta en "data" o directamente
+	var apiResponse struct {
+		ID          string
+		Title       string
+		Description string
+		Price       float64
+		Location    string
+		OwnerID     string
+		Amenities   []string
+		Capacity    int
+		Available   bool
+		Images      []string
+	}
+
+	if wrappedResponse.Data.ID != "" {
+		// Respuesta envuelta en "data"
+		apiResponse.ID = wrappedResponse.Data.ID
+		apiResponse.Title = wrappedResponse.Data.Title
+		apiResponse.Description = wrappedResponse.Data.Description
+		apiResponse.Price = wrappedResponse.Data.Price
+		apiResponse.Location = wrappedResponse.Data.Location
+		apiResponse.OwnerID = wrappedResponse.Data.OwnerID
+		apiResponse.Amenities = wrappedResponse.Data.Amenities
+		apiResponse.Capacity = wrappedResponse.Data.Capacity
+		apiResponse.Available = wrappedResponse.Data.Available
+		apiResponse.Images = wrappedResponse.Data.Images
+	} else {
+		// Respuesta directa
+		apiResponse.ID = wrappedResponse.ID
+		apiResponse.Title = wrappedResponse.Title
+		apiResponse.Description = wrappedResponse.Description
+		apiResponse.Price = wrappedResponse.Price
+		apiResponse.Location = wrappedResponse.Location
+		apiResponse.OwnerID = wrappedResponse.OwnerID
+		apiResponse.Amenities = wrappedResponse.Amenities
+		apiResponse.Capacity = wrappedResponse.Capacity
+		apiResponse.Available = wrappedResponse.Available
+		apiResponse.Images = wrappedResponse.Images
 	}
 
 	// LOG para debug
@@ -404,13 +464,9 @@ func (s *searchService) buildSearchResponse(properties []domain.Property, total 
 }
 
 // invalidateCache invalida el caché eliminando todas las keys relacionadas
-// Nota: En una implementación más sofisticada, se podría mantener un registro de keys
-// o usar un patrón de invalidación más granular
+// Limpia todo el caché local para forzar nuevas búsquedas en Solr
 func (s *searchService) invalidateCache() {
-	// Por simplicidad, invalidamos todas las keys que empiezan con "search:"
-	// En producción, se podría implementar un sistema más sofisticado de invalidación
 	log.Println("🔄 Invalidando caché de búsquedas")
-	// Nota: La invalidación completa del caché requeriría una implementación adicional
-	// en el CacheRepository para soportar invalidación por patrón
-	// Por ahora, el caché se invalidará naturalmente con su TTL
+	s.cacheRepo.InvalidateAll()
+	log.Println("✅ Caché invalidado exitosamente")
 }

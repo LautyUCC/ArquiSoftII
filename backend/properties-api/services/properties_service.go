@@ -56,7 +56,8 @@ func NewPropertyService(
 	}
 }
 
-// CreateProperty crea una nueva propiedad con validación de usuario y cálculo de precio
+// CreateProperty crea una nueva propiedad
+// Solo ADMIN puede crear propiedades (validado en el middleware)
 // Implementa los siguientes pasos:
 // 1. Validar que el owner existe llamando a usersClient.ValidateUser
 // 2. Calcular precio final usando CalculatePriceWithConcurrency
@@ -128,13 +129,16 @@ func (s *propertyService) GetPropertyByID(id string) (dto.PropertyResponseDTO, e
 	return s.toDTO(property), nil
 }
 
-// UpdateProperty actualiza una propiedad existente con validación de ownership y admin
-// Implementa los siguientes pasos:
-// 1. Obtener propiedad existente
-// 2. Validar que userID == ownerID O que sea admin
-// 3. Actualizar solo campos no vacíos
-// 4. Actualizar timestamp
-// 5. Publicar evento "update"
+	// UpdateProperty actualiza una propiedad existente
+	// Solo ADMIN puede actualizar propiedades (validado en el middleware)
+	// La validación de owner se mantiene para consistencia de datos,
+	// pero ADMIN puede editar cualquier propiedad sin importar el owner
+	// Implementa los siguientes pasos:
+	// 1. Obtener propiedad existente
+	// 2. Validar que userID == ownerID O que sea admin (siempre será admin aquí)
+	// 3. Actualizar solo campos no vacíos
+	// 4. Actualizar timestamp
+	// 5. Publicar evento "update"
 func (s *propertyService) UpdateProperty(id string, updateDTO dto.PropertyUpdateDTO, userID string, isAdmin bool) error {
 	// 1. Obtener propiedad existente
 	property, err := s.repo.GetByID(id)
@@ -143,6 +147,8 @@ func (s *propertyService) UpdateProperty(id string, updateDTO dto.PropertyUpdate
 	}
 
 	// 2. Validar permisos: solo owner o admin pueden actualizar
+	// Nota: isAdmin siempre será true aquí porque el middleware RequireAdmin valida el rol
+	// Esta validación se mantiene para consistencia de datos y posibles cambios futuros
 	if property.OwnerID != userID && !isAdmin {
 		return fmt.Errorf("forbidden: usuario con ID '%s' no tiene permisos para actualizar propiedad '%s' (owner: '%s')", userID, id, property.OwnerID)
 	}
@@ -216,8 +222,10 @@ func (s *propertyService) UpdateProperty(id string, updateDTO dto.PropertyUpdate
 	return nil
 }
 
-// DeleteProperty elimina una propiedad con validación de ownership y admin
-// Valida que el usuario tenga permisos (owner o admin) y publica evento "delete"
+// DeleteProperty elimina una propiedad
+// Solo ADMIN puede eliminar propiedades (validado en el middleware)
+// La validación de owner se mantiene para consistencia de datos,
+// pero ADMIN puede eliminar cualquier propiedad sin importar el owner
 func (s *propertyService) DeleteProperty(id string, userID string, isAdmin bool) error {
 	// Obtener propiedad existente para validar ownership
 	property, err := s.repo.GetByID(id)
@@ -226,6 +234,8 @@ func (s *propertyService) DeleteProperty(id string, userID string, isAdmin bool)
 	}
 
 	// Validar permisos: solo owner o admin pueden eliminar
+	// Nota: isAdmin siempre será true aquí porque el middleware RequireAdmin valida el rol
+	// Esta validación se mantiene para consistencia de datos y posibles cambios futuros
 	if property.OwnerID != userID && !isAdmin {
 		return fmt.Errorf("forbidden: usuario con ID '%s' no tiene permisos para eliminar propiedad '%s' (owner: '%s')", userID, id, property.OwnerID)
 	}

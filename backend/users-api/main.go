@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"users-api/controllers"
 	"users-api/domain"
 	"users-api/middleware"
 	"users-api/repositories"
 	"users-api/services"
+	"users-api/utils"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/mysql"
@@ -25,9 +25,10 @@ func main() {
 	dbPassword := getEnv("DB_PASSWORD", "spotly_password")
 	dbName := getEnv("DB_NAME", "users_db")
 
-	log.Println("🔧 Configuración cargada:")
-	log.Printf("   - DB Host: %s:%s", dbHost, dbPort)
-	log.Printf("   - DB Name: %s", dbName)
+	utils.LogStartup("Configuración cargada")
+	utils.LogConfig("DB_HOST", dbHost)
+	utils.LogConfig("DB_PORT", dbPort)
+	utils.LogConfig("DB_NAME", dbName)
 
 	// ============================================
 	// 2. CONECTAR A MYSQL
@@ -37,28 +38,30 @@ func main() {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		dbUser, dbPassword, dbHost, dbPort, dbName)
 
-	log.Println("📡 Conectando a MySQL...")
+	utils.LogStartup("Conectando a MySQL...")
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatal("❌ Failed to connect to database:", err)
+		utils.LogInfoWithoutContext(fmt.Sprintf("ERROR: Failed to connect to database: %v", err))
+		panic(err)
 	}
-	log.Println("✅ Conexión a MySQL exitosa")
+	utils.LogStartup("Conexión a MySQL exitosa")
 
 	// ============================================
 	// 3. AUTO-MIGRAR LAS TABLAS
 	// ============================================
 	// GORM crea automáticamente la tabla "users" si no existe
-	log.Println("🔄 Ejecutando migraciones...")
+	utils.LogStartup("Ejecutando migraciones...")
 	err = db.AutoMigrate(&domain.User{})
 	if err != nil {
-		log.Fatal("❌ Failed to migrate database:", err)
+		utils.LogInfoWithoutContext(fmt.Sprintf("ERROR: Failed to migrate database: %v", err))
+		panic(err)
 	}
-	log.Println("✅ Tablas creadas/actualizadas")
+	utils.LogStartup("Tablas creadas/actualizadas")
 
 	// ============================================
 	// 4. INICIALIZAR CAPAS (Patrón MVC)
 	// ============================================
-	log.Println("🏗️  Inicializando capas...")
+	utils.LogStartup("Inicializando capas...")
 
 	// Repository: acceso a datos
 	userRepo := repositories.NewUserRepository(db)
@@ -69,7 +72,7 @@ func main() {
 	// Controller: maneja HTTP
 	userController := controllers.NewUserController(userService)
 
-	log.Println("✅ Capas inicializadas")
+	utils.LogStartup("Capas inicializadas")
 
 	// ============================================
 	// 5. CONFIGURAR GIN (Framework web)
@@ -94,7 +97,7 @@ func main() {
 	// ============================================
 	// 6. DEFINIR RUTAS (Endpoints)
 	// ============================================
-	log.Println("🛣️  Configurando rutas...")
+	utils.LogStartup("Configurando rutas...")
 
 	// Rutas PÚBLICAS (sin autenticación)
 	router.GET("/health", userController.HealthCheck)
@@ -103,35 +106,26 @@ func main() {
 	router.GET("/users/:id", userController.GetUserByID) // Obtener usuario
 
 	// Rutas PROTEGIDAS (requieren JWT - solo admin)
-	// Importar middleware aquí si no está importado
 	admin := router.Group("/admin")
-	admin.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware())
+	admin.Use(middleware.RequireAdmin()) // requireAdmin valida token Y rol ADMIN
 	{
 		admin.GET("/users", userController.GetAllUsers)       // Listar todos
 		admin.PUT("/users/:id", userController.UpdateUser)    // Actualizar
 		admin.DELETE("/users/:id", userController.DeleteUser) // Eliminar
 	}
 
-	log.Println("✅ Rutas configuradas:")
-	log.Println("   - GET  /health")
-	log.Println("   - POST /users (registro)")
-	log.Println("   - POST /users/login")
-	log.Println("   - GET  /users/:id")
-	log.Println("   - GET  /admin/users (admin)")
-	log.Println("   - PUT  /admin/users/:id (admin)")
-	log.Println("   - DELETE /admin/users/:id (admin)")
+	utils.LogStartup("Rutas configuradas")
 
 	// ============================================
 	// 7. ARRANCAR EL SERVIDOR
 	// ============================================
 	port := getEnv("SERVER_PORT", "8080")
 
-	log.Println("🚀 =======================================")
-	log.Printf("🚀 Users API corriendo en puerto %s", port)
-	log.Println("🚀 =======================================")
+	utils.LogStartup(fmt.Sprintf("Users API corriendo en puerto %s", port))
 
 	if err := router.Run(":" + port); err != nil {
-		log.Fatal("❌ Failed to start server:", err)
+		utils.LogInfoWithoutContext(fmt.Sprintf("ERROR: Failed to start server: %v", err))
+		panic(err)
 	}
 }
 

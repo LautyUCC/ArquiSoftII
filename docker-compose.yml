@@ -5,12 +5,12 @@ services:
     image: mysql:8.0
     container_name: spotly-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: spotly_users
-      MYSQL_USER: spotly
-      MYSQL_PASSWORD: spotlypass
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-spotly_users}
+      MYSQL_USER: ${MYSQL_USER:-spotly}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-spotlypass}
     ports:
-      - "3307:3306"
+      - "${MYSQL_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
@@ -26,7 +26,7 @@ services:
     image: mongo:latest
     container_name: mongodb
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
     networks:
@@ -36,9 +36,12 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
@@ -49,12 +52,12 @@ services:
     image: solr:9
     container_name: solr
     ports:
-      - "8983:8983"
+      - "${SOLR_PORT:-8983}:8983"
     volumes:
       - solr_data:/var/solr
     command:
       - solr-precreate
-      - properties
+      - ${SOLR_CORE:-properties}
     networks:
       - spotly-network
     restart: unless-stopped
@@ -63,7 +66,7 @@ services:
     image: memcached:alpine
     container_name: memcached
     ports:
-      - "11211:11211"
+      - "${MEMCACHED_PORT:-11211}:11211"
     networks:
       - spotly-network
     restart: unless-stopped
@@ -72,15 +75,15 @@ services:
     build: ./backend/users-api
     container_name: users-api
     ports:
-      - "8081:8081"
+      - "${USERS_API_PORT:-8081}:${USERS_API_PORT:-8081}"
     environment:
-      SERVER_PORT: "8081"
-      DB_HOST: "spotly-mysql"
-      DB_PORT: "3306"
-      DB_USER: "spotly"
-      DB_PASSWORD: "spotlypass"
-      DB_NAME: "spotly_users"
-      JWT_SECRET: "your-super-secret-jwt-key-change-this-in-production"
+      SERVER_PORT: ${USERS_API_PORT:-8081}
+      DB_HOST: ${MYSQL_HOST:-spotly-mysql}
+      DB_PORT: ${MYSQL_PORT:-3306}
+      DB_USER: ${MYSQL_USER:-spotly}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-spotlypass}
+      DB_NAME: ${MYSQL_DATABASE:-spotly_users}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production-min-32-chars}
     depends_on:
       mysql:
         condition: service_healthy
@@ -92,12 +95,16 @@ services:
     build: ./backend/properties-api
     container_name: spotly-properties-api
     ports:
-      - "8082:8081"
+      - "${PROPERTIES_API_EXTERNAL_PORT:-8082}:${PROPERTIES_API_PORT:-8081}"
     environment:
-      SERVER_PORT: "8082"
-      MONGO_URI: "mongodb://mongodb:27017/spotly_properties"
-      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
-      USERS_API_URL: "http://users-api:8081"
+      SERVER_PORT: ${PROPERTIES_API_PORT:-8081}
+      MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/spotly_properties}
+      MONGO_DATABASE: ${MONGO_DATABASE:-spotly_properties}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      USERS_API_URL: ${USERS_API_URL:-http://users-api:8081}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production-min-32-chars}
+    volumes:
+      - property_images:/app/uploads/images
     depends_on:
       - mongodb
       - rabbitmq
@@ -110,13 +117,13 @@ services:
     build: ./backend/search-api
     container_name: spotly-search-api
     ports:
-      - "8083:8083"
+      - "${SEARCH_API_PORT:-8083}:${SEARCH_API_PORT:-8083}"
     environment:
-      SERVER_PORT: "8083"
-      SOLR_URL: "http://solr:8983/solr/properties"
-      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
-      MEMCACHED_ADDR: "memcached:11211"
-      PROPERTIES_API_URL: "http://spotly-properties-api:8081/api"
+      SERVER_PORT: ${SEARCH_API_PORT:-8083}
+      SOLR_URL: ${SOLR_URL:-http://solr:8983/solr/properties}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      MEMCACHED_ADDR: ${MEMCACHED_ADDR:-memcached:11211}
+      PROPERTIES_API_URL: ${PROPERTIES_API_URL:-http://spotly-properties-api:8081/api}
     depends_on:
       - solr
       - rabbitmq
@@ -126,17 +133,29 @@ services:
       - spotly-network
     restart: unless-stopped
 
+  frontend:
+    build: ./frontend
+    container_name: spotly-frontend
+    volumes:
+      - frontend_dist:/usr/share/nginx/html
+    networks:
+      - spotly-network
+    restart: unless-stopped
+
   nginx:
     image: nginx:alpine
     container_name: spotly-nginx
     ports:
-      - "80:80"
+      - "${NGINX_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+      - property_images:/usr/share/nginx/html/images:ro
     depends_on:
       - users-api
       - properties-api
       - search-api
+      - frontend
     networks:
       - spotly-network
     restart: unless-stopped
@@ -146,6 +165,8 @@ volumes:
   mongo_data:
   rabbitmq_data:
   solr_data:
+  frontend_dist:
+  property_images:
 
 networks:
   spotly-network:

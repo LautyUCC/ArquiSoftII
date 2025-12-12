@@ -1,10 +1,12 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 
 	"properties-api/dto"
 	"properties-api/services"
+	"properties-api/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,20 +22,24 @@ func NewPropertyController(service services.PropertyService) *PropertyController
 }
 
 // CreateProperty maneja la creación de una nueva propiedad
+// Solo ADMIN puede crear propiedades (validado por middleware RequireAdmin)
 func (c *PropertyController) CreateProperty(ctx *gin.Context) {
 	var createDTO dto.PropertyCreateDTO
 	if err := ctx.ShouldBindJSON(&createDTO); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.LogError("POST /properties", err, ctx)
+		utils.BadRequest(ctx, "Error al parsear el cuerpo de la solicitud", nil)
 		return
 	}
 
 	responseDTO, err := c.service.CreateProperty(createDTO)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.LogError("POST /properties", err, ctx)
+		utils.BadRequest(ctx, err.Error(), nil)
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, responseDTO)
+	utils.LogInfo("POST /properties", "Propiedad creada exitosamente", ctx)
+	utils.SendSuccess(ctx, http.StatusCreated, responseDTO)
 }
 
 // GetPropertyByID maneja la obtención de una propiedad por ID
@@ -42,89 +48,118 @@ func (c *PropertyController) GetPropertyByID(ctx *gin.Context) {
 
 	responseDTO, err := c.service.GetPropertyByID(id)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		utils.LogError("GET /properties/:id", err, ctx)
+		utils.NotFound(ctx, err.Error())
 		return
 	}
 
-	ctx.JSON(http.StatusOK, responseDTO)
+	utils.LogInfo("GET /properties/:id", "Propiedad obtenida exitosamente", ctx)
+	utils.SendSuccess(ctx, http.StatusOK, responseDTO)
 }
 
 // UpdateProperty maneja la actualización de una propiedad
+// Solo ADMIN puede actualizar propiedades (validado por middleware RequireAdmin)
+// La validación de owner se mantiene en el servicio para consistencia de datos,
+// pero ADMIN puede editar cualquier propiedad sin importar el owner
 func (c *PropertyController) UpdateProperty(ctx *gin.Context) {
 	id := ctx.Param("id")
 
 	var updateDTO dto.PropertyUpdateDTO
 	if err := ctx.ShouldBindJSON(&updateDTO); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.LogError("PUT /properties/:id", err, ctx)
+		utils.BadRequest(ctx, "Error al parsear el cuerpo de la solicitud", nil)
 		return
 	}
 
-	// Extraer userID del contexto (agregado por middleware)
+	// Extraer userID del contexto (agregado por middleware RequireAdmin)
 	userIDValue, exists := ctx.Get("userID")
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Usuario no autenticado"})
-		return
+		userIDValue, exists = ctx.Get("user_id") // Intentar con otro nombre
+		if !exists {
+			utils.LogError("PUT /properties/:id", nil, ctx)
+			utils.Unauthorized(ctx, "Usuario no autenticado")
+			return
+		}
 	}
 
 	// Convertir userID de any a string
 	var userID string
 	switch v := userIDValue.(type) {
 	case uint:
-		userID = string(rune(v))
+		userID = fmt.Sprintf("%d", v)
+	case int:
+		userID = fmt.Sprintf("%d", v)
 	case string:
 		userID = v
 	default:
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Tipo de userID inválido"})
+		utils.LogError("PUT /properties/:id", nil, ctx)
+		utils.InternalServerError(ctx, "Tipo de userID inválido", nil)
 		return
 	}
 
-	// Extraer isAdmin del contexto
-	isAdminValue, _ := ctx.Get("isAdmin")
-	isAdmin, _ := isAdminValue.(bool)
+	// Extraer role del contexto (siempre será ADMIN si pasó el middleware)
+	roleValue, _ := ctx.Get("role")
+	role, _ := roleValue.(string)
+	isAdmin := role == "ADMIN"
 
 	err := c.service.UpdateProperty(id, updateDTO, userID, isAdmin)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		utils.LogError("PUT /properties/:id", err, ctx)
+		utils.BadRequest(ctx, err.Error(), nil)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "Propiedad actualizada exitosamente"})
+	utils.LogInfo("PUT /properties/:id", "Propiedad actualizada exitosamente", ctx)
+	utils.SendSuccess(ctx, http.StatusOK, gin.H{"message": "Propiedad actualizada exitosamente"})
 }
 
 // DeleteProperty maneja la eliminación de una propiedad
+// Solo ADMIN puede eliminar propiedades (validado por middleware RequireAdmin)
+// La validación de owner se mantiene en el servicio para consistencia de datos,
+// pero ADMIN puede eliminar cualquier propiedad sin importar el owner
 func (c *PropertyController) DeleteProperty(ctx *gin.Context) {
 	id := ctx.Param("id")
 
-	// Extraer userID del contexto
+	// Extraer userID del contexto (agregado por middleware RequireAdmin)
 	userIDValue, exists := ctx.Get("userID")
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Usuario no autenticado"})
-		return
+		userIDValue, exists = ctx.Get("user_id") // Intentar con otro nombre
+		if !exists {
+			utils.LogError("DELETE /properties/:id", nil, ctx)
+			utils.Unauthorized(ctx, "Usuario no autenticado")
+			return
+		}
 	}
 
 	// Convertir userID de any a string
 	var userID string
 	switch v := userIDValue.(type) {
 	case uint:
-		userID = string(rune(v))
+		userID = fmt.Sprintf("%d", v)
+	case int:
+		userID = fmt.Sprintf("%d", v)
 	case string:
 		userID = v
 	default:
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Tipo de userID inválido"})
+		utils.LogError("DELETE /properties/:id", nil, ctx)
+		utils.InternalServerError(ctx, "Tipo de userID inválido", nil)
 		return
 	}
 
-	// Extraer isAdmin del contexto
-	isAdminValue, _ := ctx.Get("isAdmin")
-	isAdmin, _ := isAdminValue.(bool)
+	// Extraer role del contexto (siempre será ADMIN si pasó el middleware)
+	roleValue, _ := ctx.Get("role")
+	role, _ := roleValue.(string)
+	isAdmin := role == "ADMIN"
 
 	err := c.service.DeleteProperty(id, userID, isAdmin)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		utils.LogError("DELETE /properties/:id", err, ctx)
+		utils.NotFound(ctx, err.Error())
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "Propiedad eliminada exitosamente"})
+	utils.LogInfo("DELETE /properties/:id", "Propiedad eliminada exitosamente", ctx)
+	utils.SendSuccess(ctx, http.StatusOK, gin.H{"message": "Propiedad eliminada exitosamente"})
 }
 
 // GetUserProperties maneja la obtención de propiedades de un usuario
@@ -133,20 +168,24 @@ func (c *PropertyController) GetUserProperties(ctx *gin.Context) {
 
 	responseDTOs, err := c.service.GetUserProperties(userID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		utils.LogError("GET /properties/user/:userId", err, ctx)
+		utils.InternalServerError(ctx, err.Error(), nil)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, responseDTOs)
+	utils.LogInfo("GET /properties/user/:userId", "Propiedades obtenidas exitosamente", ctx)
+	utils.SendSuccess(ctx, http.StatusOK, responseDTOs)
 }
 
 // GetAllProperties maneja la obtención de todas las propiedades (solo admin)
 func (c *PropertyController) GetAllProperties(ctx *gin.Context) {
 	responseDTOs, err := c.service.GetAllProperties()
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		utils.LogError("GET /admin/properties", err, ctx)
+		utils.InternalServerError(ctx, err.Error(), nil)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, responseDTOs)
+	utils.LogInfo("GET /admin/properties", "Propiedades obtenidas exitosamente", ctx)
+	utils.SendSuccess(ctx, http.StatusOK, responseDTOs)
 }

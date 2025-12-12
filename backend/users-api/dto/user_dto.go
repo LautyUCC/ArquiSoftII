@@ -16,11 +16,13 @@ type LoginRequest struct {
 }
 
 // UpdateUserRequest DTO para actualizar usuario
+// Solo ADMIN puede cambiar el role de otros usuarios
 type UpdateUserRequest struct {
 	Email     *string `json:"email"`
 	FirstName *string `json:"firstName"`
 	LastName  *string `json:"lastName"`
 	Password  *string `json:"password"`
+	Role      *string `json:"role"` // USER, ADMIN, OWNER - solo ADMIN puede cambiar
 }
 
 // UserResponse DTO de respuesta
@@ -30,7 +32,7 @@ type UserResponse struct {
 	Email     string `json:"email"`
 	FirstName string `json:"firstName"`
 	LastName  string `json:"lastName"`
-	UserType  string `json:"userType"`
+	Role      string `json:"role"` // USER, ADMIN, OWNER
 }
 
 // LoginResponse DTO de respuesta del login

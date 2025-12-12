@@ -43,7 +43,10 @@ RUN apk add --no-cache ca-certificates
 
 # Establecer el directorio de trabajo en el contenedor
 # El binario se ejecutará desde este directorio
-WORKDIR /root/
+WORKDIR /app
+
+# Crear directorio para uploads de imágenes
+RUN mkdir -p /app/uploads/images
 
 # Copiar el binario compilado desde el stage de build
 # El binario "main" del stage anterior se copia al directorio actual

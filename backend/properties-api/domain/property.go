@@ -34,17 +34,6 @@ type Property struct {
 	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`
 }
 
-type Booking struct {
-	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	PropertyID string             `bson:"propertyId" json:"propertyId"`
-	UserID     string             `bson:"userId" json:"userId"`
-	CheckIn    time.Time          `bson:"checkIn" json:"checkIn"`
-	CheckOut   time.Time          `bson:"checkOut" json:"checkOut"`
-	TotalPrice float64            `bson:"totalPrice" json:"totalPrice"`
-	Status     string             `bson:"status" json:"status"` // "pending", "confirmed", "cancelled"
-	CreatedAt  time.Time          `bson:"createdAt" json:"createdAt"`
-}
-
 // PropertyUpdate representa los campos actualizables de una propiedad
 type PropertyUpdate struct {
 	Title       *string   `json:"title,omitempty" bson:"title,omitempty"`

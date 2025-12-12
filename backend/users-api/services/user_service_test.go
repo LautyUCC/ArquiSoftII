@@ -86,31 +86,32 @@ func TestCreateUser_Success(t *testing.T) {
 		LastName:  "User",
 	}
 
-	user, err := service.CreateUser(req)
+	userDTO, err := service.CreateUser(req)
 
 	// Verificaciones
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	if user == nil {
-		t.Fatal("Expected user, got nil")
+	if userDTO.Username == "" {
+		t.Fatal("Expected user, got empty")
 	}
 
-	if user.Username != req.Username {
-		t.Errorf("Expected username %s, got %s", req.Username, user.Username)
+	if userDTO.Username != req.Username {
+		t.Errorf("Expected username %s, got %s", req.Username, userDTO.Username)
 	}
 
-	if user.Email != req.Email {
-		t.Errorf("Expected email %s, got %s", req.Email, user.Email)
+	if userDTO.Email != req.Email {
+		t.Errorf("Expected email %s, got %s", req.Email, userDTO.Email)
 	}
 
-	if user.UserType != domain.UserTypeNormal {
-		t.Errorf("Expected user type %s, got %s", domain.UserTypeNormal, user.UserType)
+	if userDTO.Role != string(domain.RoleUser) {
+		t.Errorf("Expected role %s, got %s", domain.RoleUser, userDTO.Role)
 	}
 
-	// Verificar que la contraseña fue hasheada (no es la original)
-	if user.Password == req.Password {
+	// Verificar que la contraseña fue hasheada (obtener usuario del repositorio)
+	domainUser, _ := repo.GetByID(userDTO.ID)
+	if domainUser != nil && domainUser.Password == req.Password {
 		t.Error("Password should be hashed, not plain text")
 	}
 }
@@ -150,8 +151,8 @@ func TestCreateUser_DuplicateUsername(t *testing.T) {
 		t.Error("Expected nil user, got user")
 	}
 
-	if err.Error() != "username already exists" {
-		t.Errorf("Expected 'username already exists' error, got %v", err)
+	if err.Error() != "el username ya existe" {
+		t.Errorf("Expected 'el username ya existe' error, got %v", err)
 	}
 }
 
@@ -190,8 +191,8 @@ func TestCreateUser_DuplicateEmail(t *testing.T) {
 		t.Error("Expected nil user, got user")
 	}
 
-	if err.Error() != "email already exists" {
-		t.Errorf("Expected 'email already exists' error, got %v", err)
+	if err.Error() != "el email ya existe" {
+		t.Errorf("Expected 'el email ya existe' error, got %v", err)
 	}
 }
 
@@ -294,8 +295,8 @@ func TestLogin_UserNotFound(t *testing.T) {
 		t.Error("Expected nil response, got response")
 	}
 
-	if err.Error() != "invalid credentials" {
-		t.Errorf("Expected 'invalid credentials' error, got %v", err)
+	if err.Error() != "credenciales inválidas" {
+		t.Errorf("Expected 'credenciales inválidas' error, got %v", err)
 	}
 }
 
@@ -331,8 +332,8 @@ func TestLogin_WrongPassword(t *testing.T) {
 		t.Error("Expected nil response, got response")
 	}
 
-	if err.Error() != "invalid credentials" {
-		t.Errorf("Expected 'invalid credentials' error, got %v", err)
+	if err.Error() != "credenciales inválidas" {
+		t.Errorf("Expected 'credenciales inválidas' error, got %v", err)
 	}
 }
 

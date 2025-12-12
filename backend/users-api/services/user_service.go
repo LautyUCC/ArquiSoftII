@@ -47,14 +47,14 @@ func (s *userService) CreateUser(userDTO dto.CreateUserRequest) (dto.UserRespons
 		return dto.UserResponse{}, errors.New("error hasheando contraseña")
 	}
 
-	// Crear el usuario con user_type por defecto "normal"
+	// Crear el usuario con role por defecto "USER"
 	user := domain.User{
 		Username:  userDTO.Username,
 		Email:     userDTO.Email,
 		Password:  hashedPassword,
 		FirstName: userDTO.FirstName,
 		LastName:  userDTO.LastName,
-		UserType:  "normal", // Por defecto todos los usuarios son normales
+		Role:      string(domain.RoleUser), // Por defecto todos los usuarios son USER
 	}
 
 	// Guardar en la base de datos
@@ -88,8 +88,8 @@ func (s *userService) Login(loginDTO dto.LoginRequest) (dto.LoginResponse, error
 		return dto.LoginResponse{}, errors.New("credenciales inválidas")
 	}
 
-	// Generar token JWT
-	token, err := utils.GenerateToken(user.ID, user.Username, user.UserType)
+	// Generar token JWT (incluye el role como claim)
+	token, err := utils.GenerateToken(user.ID, user.Username, user.Role)
 	if err != nil {
 		return dto.LoginResponse{}, errors.New("error generando token")
 	}
@@ -115,6 +115,7 @@ func (s *userService) GetUserByID(id uint) (dto.UserResponse, error) {
 }
 
 // UpdateUser actualiza los datos de un usuario
+// Solo ADMIN puede cambiar el role de otros usuarios
 func (s *userService) UpdateUser(id uint, updateDTO dto.UpdateUserRequest) error {
 	// Obtener usuario existente
 	user, err := s.repo.GetByID(id)
@@ -147,6 +148,16 @@ func (s *userService) UpdateUser(id uint, updateDTO dto.UpdateUserRequest) error
 			return errors.New("error hasheando nueva contraseña")
 		}
 		user.Password = hashedPassword
+	}
+
+	// Actualizar role (solo si se proporciona y es válido)
+	if updateDTO.Role != nil {
+		// Validar que el role sea válido
+		role := domain.Role(*updateDTO.Role)
+		if !role.IsValid() {
+			return errors.New("role inválido. Debe ser USER, ADMIN o OWNER")
+		}
+		user.Role = *updateDTO.Role
 	}
 
 	// Guardar cambios
@@ -182,12 +193,27 @@ func (s *userService) GetAllUsers() ([]dto.UserResponse, error) {
 
 // toDTO convierte un domain.User a dto.UserResponse
 func (s *userService) toDTO(user domain.User) dto.UserResponse {
+	// Si Role está vacío pero UserType tiene valor, migrar el valor
+	role := user.Role
+	if role == "" && user.UserType != "" {
+		// Migrar de user_type antiguo a role nuevo
+		if user.UserType == "admin" {
+			role = "ADMIN"
+		} else {
+			role = "USER"
+		}
+	}
+	// Si role sigue vacío, usar valor por defecto
+	if role == "" {
+		role = "USER"
+	}
+	
 	return dto.UserResponse{
 		ID:        user.ID,
 		Username:  user.Username,
 		Email:     user.Email,
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
-		UserType:  user.UserType,
+		Role:      role,
 	}
 }

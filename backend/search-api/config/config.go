@@ -25,9 +25,9 @@ type Config struct {
 func LoadConfig() *Config {
 	return &Config{
 		SolrURL:         getEnv("SOLR_URL", "http://localhost:8983/solr/properties"),
-		MemcachedHost:   getEnv("MEMCACHED_HOST", "localhost:11211"),
+		MemcachedHost:   getEnv("MEMCACHED_ADDR", getEnv("MEMCACHED_HOST", "memcached:11211")),
 		RabbitMQURL:     getEnv("RABBITMQ_URL", "amqp://admin:admin@localhost:5672/"),
-		PropertiesAPIURL: getEnv("PROPERTIES_API_URL", "http://localhost:8081"),
+		PropertiesAPIURL: getEnv("PROPERTIES_API_URL", "http://spotly-properties-api:8081/api"),
 		Port:             getEnv("SERVER_PORT", "8083"),
 	}
 }
